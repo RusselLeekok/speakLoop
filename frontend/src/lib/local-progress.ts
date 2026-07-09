@@ -23,6 +23,10 @@ export function getLocalProgress(videoId: number): LocalProgress | null {
   return readAll()[String(videoId)] ?? null;
 }
 
+export function getAllLocalProgress(): Record<string, LocalProgress> {
+  return readAll();
+}
+
 export function saveLocalProgress(
   videoId: number,
   lastTimeMs: number,

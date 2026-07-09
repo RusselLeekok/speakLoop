@@ -18,6 +18,8 @@ import { cn, formatDate, formatDuration } from "@/lib/utils";
 
 const STATUS_FILTERS: { value: VideoStatus | ""; label: string }[] = [
   { value: "", label: "全部" },
+  { value: "processing", label: "处理中" },
+  { value: "needs_subtitle", label: "待处理字幕" },
   { value: "ready", label: "待发布" },
   { value: "published", label: "已发布" },
   { value: "unpublished", label: "已下架" },
@@ -73,10 +75,10 @@ export default function AdminVideosPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="swiss-label text-brand">Library admin</div>
-          <h1 className="mt-1 text-4xl font-black tracking-[-0.04em]">视频管理</h1>
-          <p className="mt-2 text-sm font-medium text-muted-foreground">共 {data?.total ?? "..."} 个视频</p>
+          <h1 className="mt-1 text-4xl font-black tracking-[-0.02em]">视频管理</h1>
+          <p className="mt-2 text-sm font-semibold text-muted-foreground">共 {data?.total ?? "..."} 个视频</p>
         </div>
-        <Button variant="brand" className="rounded-xl" asChild>
+        <Button variant="brand" asChild>
           <Link href="/admin/videos/new">
             <Plus />
             新增视频
@@ -84,7 +86,7 @@ export default function AdminVideosPage() {
         </Button>
       </div>
 
-      <div className="surface flex flex-wrap items-center gap-3 p-4">
+      <section className="surface flex flex-wrap items-center gap-3 p-4" aria-label="视频筛选">
         <form
           className="flex flex-wrap items-center gap-2"
           onSubmit={(e) => {
@@ -103,29 +105,32 @@ export default function AdminVideosPage() {
           {STATUS_FILTERS.map((f) => (
             <button
               key={f.value}
+              type="button"
               onClick={() => {
                 setStatus(f.value);
                 setPage(1);
               }}
               className={cn(
-                "rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all hover:-translate-y-0.5 active:translate-y-px",
-                status === f.value ? "bg-foreground text-white shadow-soft" : "bg-white/72 text-muted-foreground hover:bg-white hover:text-foreground hover:shadow-sm"
+                "rounded-md px-3.5 py-1.5 text-xs font-bold transition-all hover:-translate-y-0.5 active:translate-y-px",
+                status === f.value
+                  ? "bg-foreground text-white shadow-soft"
+                  : "bg-white/70 text-muted-foreground ring-1 ring-foreground/10 hover:bg-white hover:text-foreground hover:shadow-sm"
               )}
             >
               {f.label}
             </button>
           ))}
         </div>
-      </div>
+      </section>
 
       {actionError && (
-        <div className="rounded-xl border border-destructive/30 bg-red-50 px-4 py-3 text-sm font-semibold text-destructive shadow-soft">
+        <div className="rounded-md border border-destructive/24 bg-red-50 px-4 py-3 text-sm font-bold text-destructive shadow-sm">
           {actionError}
           <button className="ml-3 underline" onClick={() => setActionError(null)}>关闭</button>
         </div>
       )}
 
-      <div className="surface overflow-hidden p-3">
+      <section className="surface overflow-hidden p-3" aria-label="视频列表">
         {isLoading ? (
           <div className="space-y-2 p-2">
             {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
@@ -144,47 +149,56 @@ export default function AdminVideosPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.items.map((v) => (
-                <TableRow key={v.id}>
-                  <TableCell><VideoCover src={v.cover_url} alt={v.title} className="w-24 rounded-xl border border-foreground/10" /></TableCell>
-                  <TableCell className="max-w-64">
-                    <p className="truncate font-bold">{v.title}</p>
-                    <p className="truncate text-xs font-semibold text-muted-foreground">
-                      {(v.tags?.length ? v.tags : v.category ? [v.category] : []).join(" / ") || "未标签"}
-                    </p>
-                  </TableCell>
-                  <TableCell><StatusBadge status={v.status} /></TableCell>
-                  <TableCell className="tabular-nums">{formatDuration(v.duration)}</TableCell>
-                  <TableCell>{v.subtitle_count} 句</TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(v.created_at)}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1.5">
-                      {(v.status === "ready" || v.status === "unpublished") && (
-                        <Button size="sm" variant="brand" onClick={() => statusMutation.mutate({ id: v.id, newStatus: "published" })} disabled={statusMutation.isPending}>发布</Button>
-                      )}
-                      {v.status === "published" && (
-                        <Button size="sm" variant="outline" onClick={() => statusMutation.mutate({ id: v.id, newStatus: "unpublished" })} disabled={statusMutation.isPending}>下架</Button>
-                      )}
-                      <Button size="sm" variant="ghost" asChild title="字幕预览"><Link href={`/admin/videos/${v.id}/subtitles`}><Captions className="h-4 w-4" /></Link></Button>
-                      <Button size="sm" variant="ghost" asChild title="编辑"><Link href={`/admin/videos/${v.id}/edit`}><Pencil className="h-4 w-4" /></Link></Button>
-                      <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" title="删除" onClick={() => setDeleteTarget(v)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {data.items.map((v) => {
+                const tags = v.tags?.length ? v.tags : v.category ? [v.category] : [];
+                return (
+                  <TableRow key={v.id}>
+                    <TableCell>
+                      <VideoCover src={v.cover_url} alt={v.title} className="w-24 rounded-md border border-foreground/10" />
+                    </TableCell>
+                    <TableCell className="max-w-64">
+                      <p className="truncate font-black">{v.title}</p>
+                      <p className="truncate text-xs font-semibold text-muted-foreground">
+                        {tags.join(" / ") || "未标记"}
+                      </p>
+                    </TableCell>
+                    <TableCell><StatusBadge status={v.status} /></TableCell>
+                    <TableCell className="tabular-nums">{formatDuration(v.duration)}</TableCell>
+                    <TableCell>{v.subtitle_count} 句</TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(v.created_at)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-1.5">
+                        {(v.status === "ready" || v.status === "unpublished") && (
+                          <Button size="sm" variant="brand" onClick={() => statusMutation.mutate({ id: v.id, newStatus: "published" })} disabled={statusMutation.isPending}>发布</Button>
+                        )}
+                        {v.status === "published" && (
+                          <Button size="sm" variant="outline" onClick={() => statusMutation.mutate({ id: v.id, newStatus: "unpublished" })} disabled={statusMutation.isPending}>下架</Button>
+                        )}
+                        <Button size="sm" variant="ghost" asChild title="字幕预览">
+                          <Link href={`/admin/videos/${v.id}/subtitles`}><Captions className="h-4 w-4" /></Link>
+                        </Button>
+                        <Button size="sm" variant="ghost" asChild title="编辑">
+                          <Link href={`/admin/videos/${v.id}/edit`}><Pencil className="h-4 w-4" /></Link>
+                        </Button>
+                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" title="删除" onClick={() => setDeleteTarget(v)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         ) : (
-          <p className="doodle-note py-16 text-center text-sm font-semibold text-foreground">
+          <div className="doodle-note py-16 text-center text-sm font-bold text-foreground">
             {search || status ? "没有匹配的视频。" : "还没有视频。"}
-          </p>
+          </div>
         )}
-      </div>
+      </section>
 
       {data && totalPages > 1 && (
-        <div className="flex items-center justify-end gap-2 text-sm font-semibold">
+        <div className="flex items-center justify-end gap-2 text-sm font-bold">
           <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>上一页</Button>
           <span className="text-muted-foreground">{page} / {totalPages}</span>
           <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>下一页</Button>

@@ -1411,7 +1411,7 @@ function BlurredSubtitle({
         <BlindCover
           className={cn(
             "absolute inset-[-4px]",
-            compact ? "rounded-md bg-white/86" : "rounded-lg bg-white/88"
+            compact ? "rounded-md bg-white/90" : "rounded-lg bg-white/90"
           )}
         />
       )}
@@ -1423,7 +1423,7 @@ function BlindCover({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "pointer-events-none rounded-md border-2 border-dashed border-foreground/55 bg-white/88 shadow-soft backdrop-blur-[7px]",
+        "pointer-events-none rounded-md border-2 border-dashed border-foreground/50 bg-white/90 shadow-soft backdrop-blur-[7px]",
         className
       )}
     />

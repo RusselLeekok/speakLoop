@@ -18,7 +18,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-foreground/[0.34] backdrop-blur-sm data-[state=open]:animate-fade-in",
+      "fixed inset-0 z-50 bg-foreground/[0.28] backdrop-blur-sm data-[state=open]:animate-fade-in",
       className
     )}
     {...props}
@@ -41,7 +41,7 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md border-2 border-transparent p-1 text-muted-foreground opacity-80 transition-opacity hover:border-foreground hover:bg-accent hover:opacity-100 focus:outline-none">
+      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md border border-transparent p-1 text-muted-foreground opacity-80 transition-opacity hover:border-foreground/10 hover:bg-white hover:opacity-100 focus:outline-none">
         <X className="h-4 w-4" />
         <span className="sr-only">关闭</span>
       </DialogPrimitive.Close>

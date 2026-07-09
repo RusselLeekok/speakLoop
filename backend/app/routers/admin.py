@@ -4,28 +4,44 @@ import json
 from pathlib import Path
 import re
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from .. import storage
 from ..database import get_db
 from ..deps import require_admin
-from ..models import Subtitle, SubtitleSource, SubtitleWarning, Tag, User, Video, VideoTag
+from ..models import ProcessingTask, Subtitle, SubtitleSource, SubtitleWarning, Tag, User, Video, VideoTag, VideoTrack
 from ..schemas import (
     MAX_VIDEO_TAGS,
     VIDEO_STATUSES,
     AdminStatsOut,
     AdminSubtitlesOut,
+    ProcessingTaskOut,
     ReuploadResultOut,
+    SubtitleEditRequest,
+    SubtitleExtractRequest,
     SubtitleOut,
+    SubtitleTranscribeRequest,
+    TaskCreatedOut,
     UploadResultOut,
+    UrlImportRequest,
     VideoAdminListOut,
     VideoAdminOut,
+    VideoTrackOut,
     VideoUpdateIn,
     WarningOut,
 )
 from ..subtitle_parser import Cue, SubtitleParseError, merge_zh_into_en, parse_subtitle
+from ..subtitle_ops import replace_with_subtitle_files
+from ..task_logger import read_log
+from ..tasks import (
+    extract_subtitle_for_video_task,
+    import_url_video_task,
+    process_uploaded_video_task,
+    transcribe_video_task,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -99,6 +115,20 @@ def _get_video_or_404(db: Session, video_id: int) -> Video:
     if video is None:
         raise HTTPException(status_code=404, detail="视频不存在")
     return video
+
+
+def _create_processing_task(db: Session, video_id: int | None, task_type: str) -> ProcessingTask:
+    task = ProcessingTask(video_id=video_id, task_type=task_type, status="queued", progress=0)
+    db.add(task)
+    db.flush()
+    return task
+
+
+def _attach_celery_id(db: Session, task_id: int, celery_id: str) -> None:
+    task = db.get(ProcessingTask, task_id)
+    if task:
+        task.celery_id = celery_id
+        db.commit()
 
 
 def _clear_subtitle_data(db: Session, video: Video, clear_sources: bool = True) -> None:
@@ -251,6 +281,38 @@ def list_videos(
     )
 
 
+@router.post("/videos/import-url", response_model=TaskCreatedOut)
+def import_video_from_url(
+    body: UrlImportRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    url = body.url.strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="URL 不能为空")
+    tag_names = _normalize_tags(body.tags)
+    video = Video(
+        title=(body.title or url).strip()[:255],
+        description=body.description,
+        category=tag_names[0] if tag_names else None,
+        source_type="url",
+        source_url=url,
+        original_filename=None,
+        file_path="",
+        file_url="",
+        status="processing",
+        created_by=admin.id,
+    )
+    db.add(video)
+    db.flush()
+    _set_video_tags(db, video, tag_names)
+    task = _create_processing_task(db, video.id, "import_url")
+    db.commit()
+    result = import_url_video_task.delay(task.id, video.id, url, body.publish_now)
+    _attach_celery_id(db, task.id, result.id)
+    return TaskCreatedOut(task_id=task.id, video_id=video.id)
+
+
 @router.get("/videos/{video_id}", response_model=VideoAdminOut)
 def get_video(video_id: int, db: Session = Depends(get_db)):
     video = db.scalar(
@@ -263,6 +325,14 @@ def get_video(video_id: int, db: Session = Depends(get_db)):
     return video
 
 
+@router.get("/videos/{video_id}/tracks", response_model=list[VideoTrackOut])
+def get_video_tracks(video_id: int, db: Session = Depends(get_db)):
+    _get_video_or_404(db, video_id)
+    return db.scalars(
+        select(VideoTrack).where(VideoTrack.video_id == video_id).order_by(VideoTrack.stream_index)
+    ).all()
+
+
 # ---------- 新增视频（multipart 上传） ----------
 
 @router.post("/videos", response_model=UploadResultOut)
@@ -273,10 +343,10 @@ def create_video(
     tags: str | None = Form(default=None),
     publish_now: bool = Form(default=False),
     duration: float | None = Form(default=None),
-    video_file: UploadFile = ...,
-    en_subtitle_file: UploadFile = ...,
-    zh_subtitle_file: UploadFile | None = None,
-    cover_file: UploadFile | None = None,
+    video_file: UploadFile = File(...),
+    en_subtitle_file: UploadFile | None = File(default=None),
+    zh_subtitle_file: UploadFile | None = File(default=None),
+    cover_file: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
@@ -286,11 +356,18 @@ def create_video(
     tag_names = _parse_form_tags(tags, category)
 
     video_ext = storage.validate_ext(video_file, storage.VIDEO_EXTS, "视频")
-    storage.validate_ext(en_subtitle_file, storage.SUBTITLE_EXTS, "英文字幕")
+    if en_subtitle_file is not None and en_subtitle_file.filename:
+        en_ext = storage.validate_ext(en_subtitle_file, storage.SUBTITLE_EXTS, "英文字幕")
+    else:
+        en_subtitle_file = None
+        en_ext = None
     if zh_subtitle_file is not None and zh_subtitle_file.filename:
-        storage.validate_ext(zh_subtitle_file, storage.SUBTITLE_EXTS, "中文字幕")
+        if en_subtitle_file is None:
+            raise HTTPException(status_code=400, detail="上传中文字幕时也需要上传英文字幕")
+        zh_ext = storage.validate_ext(zh_subtitle_file, storage.SUBTITLE_EXTS, "中文字幕")
     else:
         zh_subtitle_file = None
+        zh_ext = None
     if cover_file is not None and cover_file.filename:
         cover_ext = storage.validate_ext(cover_file, storage.COVER_EXTS, "封面")
     else:
@@ -311,13 +388,24 @@ def create_video(
             )
             saved_files.append(cover_path)
 
-        en_data = en_subtitle_file.file.read()
-        zh_data = zh_subtitle_file.file.read() if zh_subtitle_file is not None else None
+        en_path: Path | None = None
+        zh_path: Path | None = None
+        if en_subtitle_file is not None:
+            en_path = storage.save_upload(
+                en_subtitle_file, "subtitles", en_ext or ".srt", settings.max_subtitle_size_mb, "英文字幕"
+            )
+            saved_files.append(en_path)
+        if zh_subtitle_file is not None:
+            zh_path = storage.save_upload(
+                zh_subtitle_file, "subtitles", zh_ext or ".srt", settings.max_subtitle_size_mb, "中文字幕"
+            )
+            saved_files.append(zh_path)
 
         video = Video(
             title=title,
             description=description,
             category=tag_names[0] if tag_names else ((category or "").strip() or None),
+            source_type="upload",
             original_filename=video_file.filename,
             file_path=str(video_path),
             file_url=storage.public_url(video_path),
@@ -332,39 +420,23 @@ def create_video(
         db.add(video)
         db.flush()  # 拿到 video.id
         _set_video_tags(db, video, tag_names)
-
-        try:
-            en_cues, zh_texts, warnings = _parse_pair(
-                en_data, en_subtitle_file.filename or "", zh_data,
-                zh_subtitle_file.filename if zh_subtitle_file else None, duration,
-            )
-        except SubtitleParseError as e:
-            # 保留视频记录（状态 failed），便于管理员重新上传字幕；不保留半成品字幕数据
-            video.status = "failed"
-            db.add(SubtitleWarning(video_id=video.id, warning_type="error", message=str(e)))
-            db.commit()
-            return UploadResultOut(
-                video_id=video.id, title=video.title, status="failed",
-                file_url=video.file_url, cover_url=video.cover_url,
-                subtitle_count=0, warnings=[], message=f"字幕解析失败：{e}",
-            )
-
-        _save_subtitle_source(db, video, en_subtitle_file, en_data, "en")
-        if zh_subtitle_file is not None and zh_data is not None:
-            _save_subtitle_source(db, video, zh_subtitle_file, zh_data, "zh")
-        _apply_parsed_subtitles(db, video, en_cues, zh_texts, warnings)
-
-        if publish_now:
-            video.status = "published"
-            video.published_at = datetime.now()
-        else:
-            video.status = "ready"
-
+        task = _create_processing_task(db, video.id, "analyze_upload")
         db.commit()
+        result = process_uploaded_video_task.delay(
+            task.id,
+            video.id,
+            publish_now,
+            str(en_path) if en_path else None,
+            en_subtitle_file.filename if en_subtitle_file else None,
+            str(zh_path) if zh_path else None,
+            zh_subtitle_file.filename if zh_subtitle_file else None,
+        )
+        _attach_celery_id(db, task.id, result.id)
         return UploadResultOut(
-            video_id=video.id, title=video.title, status=video.status,
+            video_id=video.id, task_id=task.id, title=video.title, status=video.status,
             file_url=video.file_url, cover_url=video.cover_url,
-            subtitle_count=video.subtitle_count, warnings=warnings,
+            subtitle_count=video.subtitle_count, warnings=[],
+            message="视频已上传，正在后台分析和处理字幕",
         )
     except HTTPException:
         db.rollback()
@@ -376,6 +448,22 @@ def create_video(
         for p in saved_files:
             storage.delete_file(str(p))
         raise HTTPException(status_code=500, detail="上传失败，已清理未完成的数据")
+
+
+@router.get("/tasks/{task_id}", response_model=ProcessingTaskOut)
+def get_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.get(ProcessingTask, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return task
+
+
+@router.get("/tasks/{task_id}/logs", response_class=PlainTextResponse)
+def get_task_logs(task_id: int, db: Session = Depends(get_db)) -> str:
+    task = db.get(ProcessingTask, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return read_log(task.log_path)
 
 
 # ---------- 编辑 / 发布 / 下架 ----------
@@ -413,7 +501,7 @@ def _change_status(video: Video, new_status: str) -> None:
 # ---------- 修改封面 ----------
 
 @router.post("/videos/{video_id}/cover", response_model=VideoAdminOut)
-def update_cover(video_id: int, cover_file: UploadFile, db: Session = Depends(get_db)):
+def update_cover(video_id: int, cover_file: UploadFile = File(...), db: Session = Depends(get_db)):
     video = _get_video_or_404(db, video_id)
     ext = storage.validate_ext(cover_file, storage.COVER_EXTS, "封面")
     new_path = storage.save_upload(cover_file, "covers", ext, storage.settings.max_cover_size_mb, "封面图片")
@@ -429,7 +517,11 @@ def update_cover(video_id: int, cover_file: UploadFile, db: Session = Depends(ge
 @router.delete("/videos/{video_id}")
 def delete_video(video_id: int, db: Session = Depends(get_db)):
     video = _get_video_or_404(db, video_id)
-    file_paths = [video.file_path, video.cover_path] + [s.file_path for s in video.subtitle_sources]
+    file_paths = (
+        [video.file_path, video.cover_path]
+        + [s.file_path for s in video.subtitle_sources]
+        + [task.log_path for task in video.tasks]
+    )
     db.delete(video)  # 级联删除字幕、字幕源、warning、学习进度（外键 CASCADE）
     db.commit()
     for p in file_paths:
@@ -442,8 +534,8 @@ def delete_video(video_id: int, db: Session = Depends(get_db)):
 @router.post("/videos/{video_id}/subtitles/reupload", response_model=ReuploadResultOut)
 def reupload_subtitles(
     video_id: int,
-    en_subtitle_file: UploadFile = ...,
-    zh_subtitle_file: UploadFile | None = None,
+    en_subtitle_file: UploadFile = File(...),
+    zh_subtitle_file: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
 ):
     video = _get_video_or_404(db, video_id)
@@ -485,7 +577,92 @@ def reupload_subtitles(
     )
 
 
+@router.post("/videos/{video_id}/subtitles/extract", response_model=TaskCreatedOut)
+def extract_subtitles(
+    video_id: int,
+    body: SubtitleExtractRequest,
+    db: Session = Depends(get_db),
+):
+    video = _get_video_or_404(db, video_id)
+    primary = db.get(VideoTrack, body.primary_track_id)
+    if primary is None or primary.video_id != video.id or primary.track_type != "subtitle":
+        raise HTTPException(status_code=404, detail="字幕轨不存在")
+    if body.zh_track_id is not None:
+        zh_track = db.get(VideoTrack, body.zh_track_id)
+        if zh_track is None or zh_track.video_id != video.id or zh_track.track_type != "subtitle":
+            raise HTTPException(status_code=404, detail="中文字幕轨不存在")
+    task = _create_processing_task(db, video.id, "extract_subtitle")
+    video.status = "processing"
+    db.commit()
+    result = extract_subtitle_for_video_task.delay(
+        task.id, video.id, body.primary_track_id, body.zh_track_id, body.publish_now
+    )
+    _attach_celery_id(db, task.id, result.id)
+    return TaskCreatedOut(task_id=task.id, video_id=video.id)
+
+
+@router.post("/videos/{video_id}/subtitles/transcribe", response_model=TaskCreatedOut)
+def transcribe_subtitles(
+    video_id: int,
+    body: SubtitleTranscribeRequest,
+    db: Session = Depends(get_db),
+):
+    video = _get_video_or_404(db, video_id)
+    if body.audio_track_id is not None:
+        track = db.get(VideoTrack, body.audio_track_id)
+        if track is None or track.video_id != video.id or track.track_type != "audio":
+            raise HTTPException(status_code=404, detail="音频轨不存在")
+    task = _create_processing_task(db, video.id, "transcribe")
+    video.status = "processing"
+    db.commit()
+    result = transcribe_video_task.delay(
+        task.id,
+        video.id,
+        body.audio_track_id,
+        body.language,
+        body.publish_now,
+        body.split_enabled,
+        body.max_chars,
+        body.max_seconds,
+    )
+    _attach_celery_id(db, task.id, result.id)
+    return TaskCreatedOut(task_id=task.id, video_id=video.id)
+
+
 # ---------- 查看字幕 ----------
+
+@router.put("/videos/{video_id}/subtitles", response_model=AdminSubtitlesOut)
+def save_subtitles(video_id: int, body: SubtitleEditRequest, db: Session = Depends(get_db)):
+    video = _get_video_or_404(db, video_id)
+    rows = sorted(body.subtitles, key=lambda item: item.sort_order)
+    previous_end = 0
+    for index, item in enumerate(rows):
+        if item.end_ms <= item.start_ms:
+            raise HTTPException(status_code=400, detail=f"第 {index + 1} 条字幕结束时间必须晚于开始时间")
+        if item.start_ms < previous_end:
+            raise HTTPException(status_code=400, detail=f"第 {index + 1} 条字幕与上一条重叠")
+        if not (item.en_text or item.zh_text):
+            raise HTTPException(status_code=400, detail=f"第 {index + 1} 条字幕内容不能为空")
+        previous_end = item.end_ms
+
+    _clear_subtitle_data(db, video, clear_sources=False)
+    for order, item in enumerate(rows):
+        db.add(
+            Subtitle(
+                video_id=video.id,
+                start_ms=item.start_ms,
+                end_ms=item.end_ms,
+                en_text=item.en_text.strip() if item.en_text else None,
+                zh_text=item.zh_text.strip() if item.zh_text else None,
+                sort_order=order,
+            )
+        )
+    video.subtitle_count = len(rows)
+    if video.status in ("failed", "needs_subtitle"):
+        video.status = "ready"
+    db.commit()
+    return get_subtitles(video_id, db)
+
 
 @router.get("/videos/{video_id}/subtitles", response_model=AdminSubtitlesOut)
 def get_subtitles(video_id: int, db: Session = Depends(get_db)):

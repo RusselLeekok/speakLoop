@@ -1,0 +1,100 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-speakloop}
+      MYSQL_USER: ${MYSQL_USER:-speakloop_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-speakloop_password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+    ports:
+      - "${MYSQL_PORT:-13306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-16379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://speakloop_user:speakloop_password@mysql:3306/speakloop?charset=utf8mb4}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      BASE_URL: ${BASE_URL:-http://localhost:18000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:13000}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/data/uploads}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      AUTO_CREATE_TABLES: ${AUTO_CREATE_TABLES:-true}
+      SEED_DEFAULT_USERS: ${SEED_DEFAULT_USERS:-true}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123456}
+      DEMO_USERNAME: ${DEMO_USERNAME:-user}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-user123456}
+      WHISPER_MODEL_SIZE: ${WHISPER_MODEL_SIZE:-small}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "${BACKEND_PORT:-18000}:8000"
+    volumes:
+      - ./backend:/app
+      - uploads_data:/data/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://speakloop_user:speakloop_password@mysql:3306/speakloop?charset=utf8mb4}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      BASE_URL: ${BASE_URL:-http://localhost:18000}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/data/uploads}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      AUTO_CREATE_TABLES: ${AUTO_CREATE_TABLES:-true}
+      SEED_DEFAULT_USERS: ${SEED_DEFAULT_USERS:-false}
+      WHISPER_MODEL_SIZE: ${WHISPER_MODEL_SIZE:-small}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+    command: celery -A app.celery_app.celery_app worker --loglevel=INFO
+    volumes:
+      - ./backend:/app
+      - uploads_data:/data/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    environment:
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:18000}
+    ports:
+      - "${FRONTEND_PRIMARY_PORT:-3000}:3000"
+      - "${FRONTEND_PORT:-13000}:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
+    name: speakloop_app_mysql_data
+  uploads_data:
+    name: speakloop_app_uploads_data

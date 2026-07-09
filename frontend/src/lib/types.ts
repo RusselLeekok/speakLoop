@@ -1,6 +1,7 @@
 export type VideoStatus =
   | "draft"
   | "processing"
+  | "needs_subtitle"
   | "ready"
   | "published"
   | "unpublished"
@@ -42,13 +43,17 @@ export interface VideoAdmin {
   description: string | null;
   category: string | null;
   tags: string[];
+  source_type: string;
+  source_url: string | null;
   original_filename: string | null;
   file_url: string;
   cover_url: string | null;
   duration: number | null;
+  container_format: string | null;
   file_size: number | null;
   mime_type: string | null;
   status: VideoStatus;
+  error_message: string | null;
   subtitle_count: number;
   created_at: string;
   updated_at: string;
@@ -98,6 +103,7 @@ export interface AdminStats {
 
 export interface UploadResult {
   video_id: number;
+  task_id: number | null;
   title: string;
   status: VideoStatus;
   file_url: string;
@@ -113,6 +119,37 @@ export interface ReuploadResult {
   subtitle_count: number;
   warnings: string[];
   message?: string | null;
+}
+
+export interface TaskCreated {
+  task_id: number;
+  video_id: number | null;
+}
+
+export interface ProcessingTask {
+  id: number;
+  celery_id: string | null;
+  video_id: number | null;
+  task_type: string;
+  status: "queued" | "running" | "completed" | "failed" | string;
+  progress: number;
+  error_message: string | null;
+  result_json: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VideoTrack {
+  id: number;
+  video_id: number;
+  track_type: "video" | "audio" | "subtitle" | string;
+  stream_index: number;
+  codec: string | null;
+  language: string | null;
+  duration: number | null;
+  width: number | null;
+  height: number | null;
+  bit_rate: number | null;
 }
 
 export interface Progress {

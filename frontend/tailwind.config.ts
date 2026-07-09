@@ -39,7 +39,6 @@ const config: Config = {
           DEFAULT: "hsl(var(--card) / <alpha-value>)",
           foreground: "hsl(var(--card-foreground) / <alpha-value>)",
         },
-        /** 品牌强调色：全站唯一彩色，用于焦点、链接、激活态、播放器高亮 */
         brand: {
           DEFAULT: "hsl(var(--brand) / <alpha-value>)",
           foreground: "hsl(var(--brand-foreground) / <alpha-value>)",

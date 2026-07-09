@@ -33,7 +33,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (!ready || !isAdmin) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-aurora text-sm font-semibold text-muted-foreground">
+      <div className="flex min-h-screen items-center justify-center bg-aurora text-sm font-bold text-muted-foreground">
         正在校验管理员身份...
       </div>
     );
@@ -41,14 +41,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-aurora">
-      <header className="sticky top-0 z-40 border-b border-foreground/10 bg-background/82 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-foreground/10 bg-background/80 backdrop-blur-xl">
         <div className="container flex h-16 items-center justify-between gap-4">
-          <Link href="/admin" className="flex items-center gap-2.5 text-lg font-extrabold tracking-tight">
+          <Link href="/admin" className="flex items-center gap-2.5 text-lg font-black tracking-tight">
             <span className="wave-field liquid-accent flex h-10 w-10 items-center justify-center">
               <Radio className="relative z-10 h-4 w-4" />
             </span>
             SpeakLoop 后台
           </Link>
+
           <nav className="hidden items-center gap-1 md:flex" aria-label="后台导航">
             {NAV.map((item) => {
               const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
@@ -57,8 +58,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-semibold",
-                    active ? "bg-foreground text-white shadow-soft" : "text-muted-foreground hover:bg-white/78 hover:text-foreground"
+                    "inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-bold",
+                    active
+                      ? "bg-foreground text-white shadow-soft"
+                      : "text-muted-foreground hover:bg-white/80 hover:text-foreground hover:shadow-sm"
                   )}
                 >
                   <item.icon className="h-3.5 w-3.5" />
@@ -67,6 +70,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               );
             })}
           </nav>
+
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" asChild>
               <Link href="/">
@@ -88,13 +92,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
         </div>
       </header>
+
       <main id="main-content" className="container py-8 md:py-10">
-        <div className="md:hidden mb-5 flex gap-2">
-          {NAV.map((item) => (
-            <Button key={item.href} variant={pathname === item.href ? "secondary" : "outline"} size="sm" asChild>
-              <Link href={item.href}>{item.label}</Link>
-            </Button>
-          ))}
+        <div className="mb-5 flex gap-2 md:hidden">
+          {NAV.map((item) => {
+            const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
+            return (
+              <Button key={item.href} variant={active ? "secondary" : "outline"} size="sm" asChild>
+                <Link href={item.href}>{item.label}</Link>
+              </Button>
+            );
+          })}
         </div>
         {children}
       </main>

@@ -4,46 +4,46 @@
 
 @layer base {
   :root {
-    --background: 38 42% 96%;
-    --foreground: 218 35% 12%;
+    --background: 42 38% 96%;
+    --foreground: 218 30% 13%;
 
-    --card: 38 55% 99%;
-    --card-foreground: 218 35% 12%;
+    --card: 42 42% 99%;
+    --card-foreground: 218 30% 13%;
 
-    --primary: 196 67% 50%;
-    --primary-foreground: 217 45% 10%;
+    --primary: 193 62% 49%;
+    --primary-foreground: 210 28% 10%;
 
-    --secondary: 217 37% 18%;
-    --secondary-foreground: 38 55% 98%;
+    --secondary: 217 24% 18%;
+    --secondary-foreground: 42 42% 98%;
 
-    --muted: 38 27% 91%;
-    --muted-foreground: 218 13% 38%;
+    --muted: 42 20% 91%;
+    --muted-foreground: 218 12% 39%;
 
-    --accent: 46 88% 78%;
-    --accent-foreground: 217 45% 10%;
+    --accent: 47 82% 76%;
+    --accent-foreground: 218 30% 13%;
 
-    --destructive: 0 70% 48%;
+    --destructive: 0 66% 48%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 218 24% 18%;
-    --input: 218 24% 18%;
+    --border: 218 20% 82%;
+    --input: 218 20% 82%;
 
-    --brand: 196 67% 50%;
-    --brand-foreground: 217 45% 10%;
-    --ring: 196 67% 42%;
-    --ink: 218 35% 12%;
-    --paper: 38 42% 96%;
-    --signal: 151 56% 39%;
-    --studio: 217 37% 18%;
-    --warning: 31 84% 42%;
+    --brand: 193 62% 49%;
+    --brand-foreground: 210 28% 10%;
+    --ring: 193 62% 42%;
+    --ink: 218 30% 13%;
+    --paper: 42 38% 96%;
+    --signal: 151 48% 38%;
+    --studio: 217 24% 18%;
+    --warning: 34 82% 45%;
 
     --radius: 0.875rem;
-    --radius-sm: 0.55rem;
+    --radius-sm: 0.5rem;
     --radius-md: 0.75rem;
-    --radius-lg: 1.1rem;
-    --shadow-soft: 0 14px 34px hsl(218 35% 12% / 0.08), 0 2px 0 hsl(218 35% 12% / 0.08);
-    --shadow-card: 0 24px 70px hsl(218 35% 12% / 0.14), 0 2px 0 hsl(218 35% 12% / 0.08);
-    --shadow-lift: 0 16px 38px hsl(196 67% 35% / 0.22);
+    --radius-lg: 1rem;
+    --shadow-soft: 0 14px 34px hsl(218 30% 13% / 0.08), 0 1px 0 hsl(0 0% 100% / 0.8) inset;
+    --shadow-card: 0 22px 58px hsl(218 30% 13% / 0.13), 0 1px 0 hsl(0 0% 100% / 0.82) inset;
+    --shadow-lift: 0 16px 38px hsl(193 62% 34% / 0.2);
     --transition-fast: 180ms cubic-bezier(0.2, 0, 0, 1);
   }
 
@@ -54,8 +54,8 @@
   html {
     scroll-behavior: smooth;
     font-family:
-      "Avenir Next", "Nunito Sans", "Segoe UI", "PingFang SC",
-      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      "Aptos", "Segoe UI Variable", "SF Pro Text", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
@@ -65,11 +65,11 @@
     min-height: 100dvh;
     background-color: hsl(var(--paper));
     background-image:
-      radial-gradient(circle at 8% 4%, hsl(var(--brand) / 0.16), transparent 28rem),
-      radial-gradient(circle at 92% 12%, hsl(var(--accent) / 0.34), transparent 26rem),
+      radial-gradient(circle at 12% 8%, hsl(var(--brand) / 0.12), transparent 30rem),
+      radial-gradient(circle at 88% 4%, hsl(var(--accent) / 0.26), transparent 28rem),
       linear-gradient(hsl(var(--ink) / 0.035) 1px, transparent 1px),
       linear-gradient(90deg, hsl(var(--ink) / 0.03) 1px, transparent 1px);
-    background-size: auto, auto, 28px 28px, 28px 28px;
+    background-size: auto, auto, 30px 30px, 30px 30px;
   }
 
   body::before {
@@ -78,13 +78,23 @@
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    opacity: 0.33;
+    opacity: 0.18;
     background-image:
-      radial-gradient(hsl(var(--ink) / 0.1) 0.7px, transparent 0.8px),
-      radial-gradient(hsl(var(--brand) / 0.16) 0.7px, transparent 0.8px);
-    background-position: 0 0, 15px 21px;
-    background-size: 36px 36px, 52px 52px;
-    mask-image: linear-gradient(to bottom, black, transparent 92%);
+      radial-gradient(hsl(var(--ink) / 0.16) 0.65px, transparent 0.75px),
+      radial-gradient(hsl(var(--brand) / 0.16) 0.65px, transparent 0.75px);
+    background-position: 0 0, 18px 22px;
+    background-size: 42px 42px, 56px 56px;
+    mask-image: linear-gradient(to bottom, black, transparent 88%);
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
   }
 
   ::selection {
@@ -103,7 +113,7 @@
   }
 
   :focus-visible {
-    outline: 3px solid hsl(var(--ring) / 0.78);
+    outline: 3px solid hsl(var(--ring) / 0.72);
     outline-offset: 3px;
   }
 }
@@ -120,7 +130,7 @@
     color: white;
     padding: 0.625rem 1rem;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 800;
   }
 
   .skip-link:focus {
@@ -143,26 +153,26 @@
   .bg-auth-glow {
     background-color: hsl(var(--paper));
     background-image:
-      radial-gradient(circle at 14% 10%, hsl(var(--brand) / 0.15), transparent 28rem),
-      radial-gradient(circle at 88% 14%, hsl(var(--accent) / 0.3), transparent 24rem),
-      linear-gradient(hsl(var(--ink) / 0.035) 1px, transparent 1px),
-      linear-gradient(90deg, hsl(var(--ink) / 0.03) 1px, transparent 1px);
-    background-size: auto, auto, 28px 28px, 28px 28px;
+      radial-gradient(circle at 14% 10%, hsl(var(--brand) / 0.12), transparent 30rem),
+      radial-gradient(circle at 88% 10%, hsl(var(--accent) / 0.24), transparent 27rem),
+      linear-gradient(hsl(var(--ink) / 0.034) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--ink) / 0.028) 1px, transparent 1px);
+    background-size: auto, auto, 30px 30px, 30px 30px;
   }
 
   .surface,
   .glass,
   .studio-panel {
     position: relative;
-    border: 1px solid hsl(var(--ink) / 0.18);
+    border: 1px solid hsl(var(--ink) / 0.1);
     border-radius: var(--radius-lg);
     background:
-      linear-gradient(180deg, hsl(var(--card) / 0.96), hsl(var(--card) / 0.88)),
-      radial-gradient(circle at 0 0, hsl(var(--brand) / 0.09), transparent 18rem);
+      linear-gradient(180deg, hsl(var(--card) / 0.96), hsl(var(--card) / 0.9)),
+      radial-gradient(circle at 0 0, hsl(var(--brand) / 0.055), transparent 18rem);
     color: hsl(var(--foreground));
     box-shadow: var(--shadow-soft);
-    backdrop-filter: blur(16px) saturate(1.1);
-    -webkit-backdrop-filter: blur(16px) saturate(1.1);
+    backdrop-filter: blur(18px) saturate(1.08);
+    -webkit-backdrop-filter: blur(18px) saturate(1.08);
   }
 
   .surface::before,
@@ -171,9 +181,9 @@
     content: "";
     pointer-events: none;
     position: absolute;
-    inset: 0.45rem;
-    border: 1px dashed hsl(var(--ink) / 0.14);
-    border-radius: calc(var(--radius-lg) - 0.35rem);
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.78);
   }
 
   .surface > *,
@@ -184,10 +194,10 @@
   }
 
   .liquid-accent {
-    border: 1px solid hsl(var(--ink) / 0.28);
+    border: 1px solid hsl(var(--ink) / 0.13);
     border-radius: var(--radius-md);
     background:
-      linear-gradient(135deg, hsl(var(--brand)), hsl(196 67% 63%)),
+      linear-gradient(135deg, hsl(var(--brand)), hsl(193 62% 63%)),
       repeating-linear-gradient(-12deg, transparent 0 9px, hsl(0 0% 100% / 0.2) 9px 14px);
     color: hsl(var(--brand-foreground));
     box-shadow: var(--shadow-lift);
@@ -202,9 +212,9 @@
   }
 
   .doodle-note {
-    border: 1px dashed hsl(var(--ink) / 0.24);
+    border: 1px solid hsl(var(--warning) / 0.24);
     border-radius: var(--radius-md);
-    background: hsl(var(--accent) / 0.42);
+    background: linear-gradient(180deg, hsl(var(--accent) / 0.42), hsl(var(--accent) / 0.24));
   }
 
   .wave-field {
@@ -217,7 +227,7 @@
     pointer-events: none;
     position: absolute;
     inset: 0;
-    opacity: 0.2;
+    opacity: 0.16;
     background:
       repeating-linear-gradient(
         90deg,
@@ -238,7 +248,7 @@
   .thin-scrollbar::-webkit-scrollbar-thumb {
     border: 2px solid hsl(var(--paper));
     border-radius: 9999px;
-    background: hsl(var(--studio) / 0.78);
+    background: hsl(var(--studio) / 0.62);
   }
 
   .player-seek {

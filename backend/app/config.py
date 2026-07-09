@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = "mysql+pymysql://root:root@127.0.0.1:3306/speakloop?charset=utf8mb4"
+    redis_url: str = "redis://127.0.0.1:6379/0"
     jwt_secret: str = "dev-secret-change-me"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
@@ -26,6 +27,10 @@ class Settings(BaseSettings):
     max_video_size_mb: int = 2048
     max_subtitle_size_mb: int = 5
     max_cover_size_mb: int = 10
+
+    whisper_model_size: str = "small"
+    whisper_device: str = "cpu"
+    whisper_compute_type: str = "int8"
 
     @property
     def cors_origin_list(self) -> list[str]:

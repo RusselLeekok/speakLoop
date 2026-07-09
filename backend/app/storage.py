@@ -18,7 +18,7 @@ VIDEO_MIME = {".mp4": "video/mp4", ".webm": "video/webm"}
 
 
 def ensure_upload_dirs() -> None:
-    for sub in ("videos", "subtitles", "covers", "recordings"):
+    for sub in ("videos", "subtitles", "covers", "recordings", "imports", "temp", "logs"):
         (settings.upload_root / sub).mkdir(parents=True, exist_ok=True)
 
 
@@ -59,6 +59,15 @@ def save_upload(upload: UploadFile, subdir: str, ext: str, max_mb: int, label: s
         dest.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail=f"{label}是空文件")
     return dest
+
+
+def unique_path(subdir: str, ext: str, stem: str = "file") -> Path:
+    ensure_upload_dirs()
+    clean_ext = ext if ext.startswith(".") else f".{ext}"
+    safe_stem = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in stem).strip("_")
+    if not safe_stem:
+        safe_stem = "file"
+    return settings.upload_root / subdir / f"{safe_stem}_{uuid.uuid4().hex[:10]}{clean_ext}"
 
 
 def public_url(path: Path) -> str:

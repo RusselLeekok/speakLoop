@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -53,15 +54,20 @@ class Video(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source_type: Mapped[str] = mapped_column(String(20), nullable=False, default="upload")
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     file_url: Mapped[str] = mapped_column(Text, nullable=False)
     cover_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration: Mapped[float | None] = mapped_column(Double, nullable=True)
+    container_format: Mapped[str | None] = mapped_column(String(120), nullable=True)
     file_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     mime_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     subtitle_count: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
@@ -81,6 +87,12 @@ class Video(Base):
     )
     tag_links: Mapped[list["VideoTag"]] = relationship(
         back_populates="video", cascade="all, delete-orphan", order_by="VideoTag.sort_order"
+    )
+    tracks: Mapped[list["VideoTrack"]] = relationship(
+        back_populates="video", cascade="all, delete-orphan", order_by="VideoTrack.stream_index"
+    )
+    tasks: Mapped[list["ProcessingTask"]] = relationship(
+        back_populates="video", cascade="all, delete-orphan", order_by="ProcessingTask.created_at"
     )
 
     @property
@@ -127,6 +139,62 @@ class VideoTag(Base):
 
     video: Mapped["Video"] = relationship(back_populates="tag_links")
     tag: Mapped["Tag"] = relationship(back_populates="video_links")
+
+
+class VideoTrack(Base):
+    __tablename__ = "video_tracks"
+    __table_args__ = (
+        Index("ix_video_tracks_video", "video_id"),
+        Index("ix_video_tracks_type", "track_type"),
+        MYSQL_ARGS,
+    )
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    video_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("videos.id", ondelete="CASCADE"), nullable=False
+    )
+    track_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    stream_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    codec: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    language: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    duration: Mapped[float | None] = mapped_column(Double, nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bit_rate: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    raw_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    video: Mapped["Video"] = relationship(back_populates="tracks")
+
+
+class ProcessingTask(Base):
+    __tablename__ = "processing_tasks"
+    __table_args__ = (
+        Index("ix_processing_tasks_video", "video_id"),
+        Index("ix_processing_tasks_status", "status"),
+        MYSQL_ARGS,
+    )
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    celery_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    video_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("videos.id", ondelete="CASCADE"), nullable=True
+    )
+    task_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    log_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    video: Mapped["Video | None"] = relationship(back_populates="tasks")
 
 
 class Subtitle(Base):
