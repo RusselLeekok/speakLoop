@@ -11,6 +11,10 @@ export const metadata: Metadata = {
     template: "%s | SpeakLoop",
   },
   description: "逐句精听、循环跟读、自动记录进度的英语学习播放器。",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    shortcut: ["/icon.svg"],
+  },
   openGraph: {
     title: "SpeakLoop",
     description: "把英语素材拆成一句一句的跟练场。",
