@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
+  BarChart3,
   Bell,
   BookOpen,
   Captions,
@@ -60,6 +61,7 @@ const topNav = [
   { label: "首页", href: "/", view: "discover" },
   { label: "视频库", href: "/library", view: "library" },
   { label: "我的学习", href: "/study", view: "study" },
+  { label: "图表", href: "/insights", view: "insights" },
 ] as const;
 
 const sideNav = [
@@ -67,6 +69,7 @@ const sideNav = [
   { label: "视频库", href: "/library", view: "library", icon: Library },
   { label: "精听", href: "/intensive", view: "intensive", icon: BookOpen },
   { label: "生词卡", href: "/words", view: "words", icon: Sparkles },
+  { label: "图表", href: "/insights", view: "insights", icon: BarChart3 },
   { label: "我的", href: "/study", view: "study", icon: UserIcon },
 ] as const;
 
@@ -172,8 +175,8 @@ export function LearningWorkspace({ view }: { view: WorkspaceView }) {
   }, [router, showUser, user?.role]);
 
   useEffect(() => {
-    ["/", "/library", "/study", "/intensive", "/words"].forEach((path) => router.prefetch(path));
-    prewarmRoutes(["/", "/library", "/study", "/intensive", "/words"]);
+    ["/", "/library", "/study", "/intensive", "/words", "/insights"].forEach((path) => router.prefetch(path));
+    prewarmRoutes(["/", "/library", "/study", "/intensive", "/words", "/insights"]);
   }, [router]);
 
   const { data: videos, isError, isLoading } = useQuery({
