@@ -512,18 +512,21 @@ function Player({
 
       <div
         className={cn(
-          "mx-auto grid h-[calc(100vh-3.5rem)] min-h-0 w-full max-w-[calc(100vw-8px)] flex-1 overflow-hidden p-1.5 lg:p-2",
+          "mx-auto grid h-[calc(100dvh-3.5rem)] min-h-0 w-full max-w-[calc(100vw-8px)] flex-1 items-stretch overflow-hidden p-1.5 lg:p-2",
           practiceMode === "intensive"
             ? "gap-y-3 lg:max-w-[1780px] lg:grid-cols-[minmax(0,1fr)_300px_300px] lg:gap-x-0"
             : "gap-3 lg:grid-cols-[minmax(0,1fr)_340px] xl:max-w-[1680px]"
         )}
       >
-        <div className="flex min-h-0 min-w-0 flex-col gap-2.5 lg:h-[calc(100vh-4.5rem)]">
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border-2 border-foreground bg-[#f4efe3] shadow-elevated">
+        <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] gap-2.5 lg:h-[calc(100dvh-4.5rem)]">
+          <div
+            className="relative mx-auto aspect-video max-h-[calc(100dvh-12rem)] w-full self-center overflow-hidden rounded-lg border-2 border-foreground bg-black shadow-elevated"
+            style={{ maxWidth: "min(100%, calc(177.78dvh - 21.33rem))" }}
+          >
             <video
               ref={videoRef}
               src={video.file_url}
-              className="h-full w-full object-cover"
+              className="h-full w-full bg-black object-contain"
               playsInline
               onPlay={() => setPlaying(true)}
               onPause={() => {
@@ -541,6 +544,34 @@ function Player({
               }}
               onClick={togglePlay}
             />
+            {currentSub && !subtitlesHidden && practiceMode !== "blind" && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/70 via-black/35 to-transparent px-4 pb-5 pt-16 text-center text-white">
+                <div className="pointer-events-auto mx-auto max-w-4xl space-y-1.5 rounded-md bg-black/25 px-4 py-2 backdrop-blur-[2px]">
+                  {showEn && currentSub.en_text && (
+                    <p className="text-lg font-bold leading-relaxed drop-shadow md:text-xl">
+                      {practiceMode === "blank" ? (
+                        <ClozeText text={currentSub.en_text} />
+                      ) : (
+                        <HighlightedSubtitleText
+                          text={currentSub.en_text}
+                          items={studyItemsBySubtitle.get(currentIndex) ?? []}
+                          statuses={studyStatuses}
+                          onTermClick={openStudyItem}
+                        />
+                      )}
+                    </p>
+                  )}
+                  {showZh &&
+                    (currentSub.zh_text ? (
+                      <p className="text-sm font-semibold leading-relaxed text-white/85 drop-shadow md:text-base">
+                        {currentSub.zh_text}
+                      </p>
+                    ) : (
+                      language === "zh" && <p className="text-sm font-semibold text-white/70">本句暂无中文字幕</p>
+                    ))}
+                </div>
+              </div>
+            )}
             {restored && initialMs > 3000 && (
               <div className="absolute left-3 top-3 flex flex-wrap items-center gap-2 rounded-md border-2 border-foreground bg-accent px-3 py-2 text-xs font-bold shadow-soft">
                 已恢复到 {formatDuration(initialMs / 1000)}
@@ -558,51 +589,6 @@ function Player({
                 </button>
               </div>
             )}
-          </div>
-
-          <div className="surface relative flex h-28 shrink-0 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-lg px-6 py-3 text-center">
-            {currentSub ? (
-              <div
-                key={currentSub.id}
-                className={cn(
-                  "animate-fade-up space-y-2 transition-all duration-200",
-                  subtitlesHidden && "opacity-60 blur-[6px]"
-                )}
-              >
-                {(showEn || subtitlesHidden) && currentSub.en_text && (
-                  <p className="text-xl font-bold leading-relaxed text-foreground md:text-2xl">
-                    {practiceMode === "blank" ? (
-                      <ClozeText text={currentSub.en_text} />
-                    ) : (
-                      <HighlightedSubtitleText
-                        text={currentSub.en_text}
-                        items={studyItemsBySubtitle.get(currentIndex) ?? []}
-                        statuses={studyStatuses}
-                        onTermClick={openStudyItem}
-                      />
-                    )}
-                  </p>
-                )}
-                {(showZh || subtitlesHidden) &&
-                  (currentSub.zh_text ? (
-                    <p className="text-base font-semibold leading-relaxed text-muted-foreground">
-                      {currentSub.zh_text}
-                    </p>
-                  ) : (
-                    language === "zh" && <p className="text-sm text-muted-foreground">本句暂无中文字幕</p>
-                  ))}
-              </div>
-            ) : (
-              <p
-                className={cn(
-                  "text-sm font-bold text-muted-foreground transition-all duration-200",
-                  subtitlesHidden && "opacity-60 blur-[6px]"
-                )}
-              >
-                {playing ? "等待下一句..." : "点击播放，从第一句开始练习"}
-              </p>
-            )}
-            {subtitlesHidden && <BlindCover className="absolute inset-2 z-20" />}
           </div>
 
           <div className="surface shrink-0 rounded-lg px-4 py-2.5">
@@ -670,7 +656,7 @@ function Player({
 
         <aside
           className={cn(
-            "surface flex min-h-[50vh] flex-col overflow-visible rounded-lg lg:h-[calc(100vh-4.5rem)] lg:min-h-0",
+            "surface flex h-full min-h-0 flex-col overflow-hidden rounded-lg lg:h-[calc(100dvh-4.5rem)]",
             practiceMode === "intensive" && "lg:rounded-r-none lg:border-r-0"
           )}
         >
@@ -717,7 +703,7 @@ function Player({
 
           <div
             ref={listRef}
-            className="thin-scrollbar fade-mask-y relative z-0 flex-1 overflow-y-auto scroll-smooth rounded-b-lg bg-white lg:max-h-[calc(100vh-9.5rem)]"
+            className="thin-scrollbar fade-mask-y relative z-0 min-h-0 flex-1 overflow-y-auto scroll-smooth rounded-b-lg bg-white"
           >
             <ol className="relative divide-y-2 divide-foreground/15 py-2">
               {subtitles.map((sub, i) => {

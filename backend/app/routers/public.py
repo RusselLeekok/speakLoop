@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, load_only, selectinload
 
 from ..database import get_db
 from ..deps import get_current_user
@@ -36,7 +36,20 @@ def list_videos(
 ):
     query = (
         select(Video)
-        .options(selectinload(Video.tag_links).selectinload(VideoTag.tag))
+        .options(
+            load_only(
+                Video.id,
+                Video.title,
+                Video.description,
+                Video.category,
+                Video.cover_url,
+                Video.duration,
+                Video.subtitle_count,
+                Video.published_at,
+                Video.status,
+            ),
+            selectinload(Video.tag_links).selectinload(VideoTag.tag),
+        )
         .where(Video.status == "published")
     )
     if keyword:

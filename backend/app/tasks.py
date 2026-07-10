@@ -109,6 +109,7 @@ def _finish_after_analysis(
             zh_name,
         )
         video.status = "published" if publish_now else "ready"
+        video.error_message = None
         if video.status == "published" and video.published_at is None:
             from datetime import datetime
 
@@ -123,6 +124,7 @@ def _finish_after_analysis(
         extracted = extract_subtitle_track(Path(video.file_path), subtitle_tracks[0].stream_index, "srt", logger)
         replace_with_subtitle_files(db, video, extracted, extracted.name)
         video.status = "published" if publish_now else "ready"
+        video.error_message = None
         if video.status == "published" and video.published_at is None:
             from datetime import datetime
 
@@ -154,6 +156,7 @@ def _finish_after_analysis(
         pass
     replace_with_whisper_segments(db, video, subtitle_path, segments)
     video.status = "published" if publish_now else "ready"
+    video.error_message = None
     if video.status == "published" and video.published_at is None:
         from datetime import datetime
 
@@ -252,6 +255,7 @@ def extract_subtitle_for_video_task(task_id: int, video_id: int, primary_track_i
         _set_task(db, task, "running", 80)
         replace_with_subtitle_files(db, video, en_path, en_path.name, zh_path, zh_path.name if zh_path else None)
         video.status = "published" if publish_now else "ready"
+        video.error_message = None
         if video.status == "published" and video.published_at is None:
             from datetime import datetime
 
@@ -308,6 +312,7 @@ def transcribe_video_task(
             pass
         replace_with_whisper_segments(db, video, subtitle_path, segments)
         video.status = "published" if publish_now else "ready"
+        video.error_message = None
         if video.status == "published" and video.published_at is None:
             from datetime import datetime
 

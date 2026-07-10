@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   Bell,
   BookOpen,
@@ -26,13 +25,15 @@ import {
 } from "lucide-react";
 
 import { VideoCover } from "@/components/video-cover";
+import { PendingLink } from "@/components/pending-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
-import { getAllLocalProgress, getLocalProgress, type LocalProgress } from "@/lib/local-progress";
+import { getAllLocalProgress, type LocalProgress } from "@/lib/local-progress";
+import { prewarmRoutes } from "@/lib/route-prewarm";
 import type { Progress, VideoPublic } from "@/lib/types";
 import { cn, formatDuration } from "@/lib/utils";
 
@@ -162,6 +163,19 @@ export function LearningWorkspace({ view }: { view: WorkspaceView }) {
 
   const showUser = mounted && hydrated;
 
+  useEffect(() => {
+    if (!showUser || user?.role !== "admin") return;
+    router.prefetch("/admin");
+    router.prefetch("/admin/videos");
+    router.prefetch("/admin/videos/new");
+    prewarmRoutes(["/admin", "/admin/videos", "/admin/videos/new"]);
+  }, [router, showUser, user?.role]);
+
+  useEffect(() => {
+    ["/", "/library", "/study", "/intensive", "/words"].forEach((path) => router.prefetch(path));
+    prewarmRoutes(["/", "/library", "/study", "/intensive", "/words"]);
+  }, [router]);
+
   const { data: videos, isError, isLoading } = useQuery({
     queryKey: ["videos", search, category],
     queryFn: () => {
@@ -171,12 +185,14 @@ export function LearningWorkspace({ view }: { view: WorkspaceView }) {
       const qs = params.toString();
       return api.get<VideoPublic[]>(`/api/videos${qs ? `?${qs}` : ""}`);
     },
+    placeholderData: keepPreviousData,
     retry: false,
   });
 
   const { data: categories } = useQuery({
     queryKey: ["categories"],
     queryFn: () => api.get<string[]>("/api/videos/categories"),
+    placeholderData: keepPreviousData,
     retry: false,
   });
 
@@ -184,10 +200,14 @@ export function LearningWorkspace({ view }: { view: WorkspaceView }) {
     queryKey: ["my-progress", token],
     queryFn: () => api.get<Progress[]>("/api/progress"),
     enabled: !!token,
+    placeholderData: keepPreviousData,
   });
 
   const rawVideos = videos ?? [];
-  const progressRows: ProgressRecord[] = token ? serverProgress ?? [] : localProgressToRows(localProgress);
+  const progressRows = useMemo<ProgressRecord[]>(
+    () => (token ? serverProgress ?? [] : localProgressToRows(localProgress)),
+    [localProgress, serverProgress, token]
+  );
   const progressByVideo = useMemo(() => {
     const map = new Map<number, ProgressRecord>();
     progressRows.forEach((row) => map.set(row.video_id, row));
@@ -204,18 +224,14 @@ export function LearningWorkspace({ view }: { view: WorkspaceView }) {
   }, [progressRows]);
 
   const categoryOptions = categories && categories.length > 0 ? categories : fallbackCategories;
-  const getProgressRow = (video: VideoPublic) =>
-    progressByVideo.get(video.id) ??
-    (token ? undefined : getLocalProgress(video.id)
-      ? { video_id: video.id, ...getLocalProgress(video.id)! }
-      : undefined);
+  const getProgressRow = (video: VideoPublic) => progressByVideo.get(video.id);
   const getProgressMs = (video: VideoPublic) => getProgressRow(video)?.last_time_ms ?? 0;
   const activeFilterCount = [category, duration !== "all", progressFilter !== "all"].filter(Boolean).length;
 
   const visibleVideos = useMemo(() => {
     return rawVideos.filter((video) => {
       const progress = progressByVideo.get(video.id);
-      const progressMs = progress?.last_time_ms ?? (!token ? getLocalProgress(video.id)?.last_time_ms ?? 0 : 0);
+      const progressMs = progress?.last_time_ms ?? 0;
       const hasProgress = progressMs > 3000;
       const minutes = (video.duration ?? 0) / 60;
 
@@ -232,10 +248,16 @@ export function LearningWorkspace({ view }: { view: WorkspaceView }) {
       if (progressFilter === "fresh" && hasProgress) return false;
       return true;
     });
-  }, [rawVideos, progressByVideo, token, view, selectedDate, duration, progressFilter]);
+  }, [rawVideos, progressByVideo, view, selectedDate, duration, progressFilter]);
 
-  const learnedCount = rawVideos.filter((video) => getProgressMs(video) > 3000).length;
-  const totalMinutes = progressRows.reduce((sum, row) => sum + Math.max(0, row.last_time_ms) / 60000, 0);
+  const learnedCount = useMemo(
+    () => rawVideos.filter((video) => (progressByVideo.get(video.id)?.last_time_ms ?? 0) > 3000).length,
+    [progressByVideo, rawVideos]
+  );
+  const totalMinutes = useMemo(
+    () => progressRows.reduce((sum, row) => sum + Math.max(0, row.last_time_ms) / 60000, 0),
+    [progressRows]
+  );
 
   const resetFilters = () => {
     setCategory(null);
@@ -298,16 +320,17 @@ export function LearningWorkspace({ view }: { view: WorkspaceView }) {
 
               <nav className="hidden items-center gap-7 text-sm font-black text-muted-foreground md:flex" aria-label="顶部导航">
                 {topNav.map((item) => (
-                  <Link
+                  <PendingLink
                     key={item.href}
                     href={item.href}
+                    showFeedback={false}
                     className={cn(
                       "border-b-2 border-transparent py-5 transition-colors hover:text-foreground",
                       isActive(pathname, item.href) && "border-brand text-brand"
                     )}
                   >
                     {item.label}
-                  </Link>
+                  </PendingLink>
                 ))}
               </nav>
 
@@ -348,19 +371,20 @@ export function LearningWorkspace({ view }: { view: WorkspaceView }) {
               </div>
 
               {showUser && user ? (
-                <Link
+                <PendingLink
                   href="/study"
+                  showFeedback={false}
                   className="hidden h-10 min-w-10 items-center justify-center rounded-md bg-white px-3 text-sm font-black text-brand shadow-sm ring-1 ring-foreground/10 sm:inline-flex"
                   title="我的学习"
                 >
                   {user.username.slice(0, 1).toUpperCase()}
-                </Link>
+                </PendingLink>
               ) : (
                 <Button size="sm" variant="outline" asChild>
-                  <Link href="/login">
+                  <PendingLink href="/login">
                     <LogIn className="h-4 w-4" />
                     登录
-                  </Link>
+                  </PendingLink>
                 </Button>
               )}
             </div>
@@ -440,11 +464,10 @@ export function LearningWorkspace({ view }: { view: WorkspaceView }) {
                 <VideoGridSkeleton />
               ) : visibleVideos.length > 0 ? (
                 <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                  {visibleVideos.map((video, index) => (
+                  {visibleVideos.map((video) => (
                     <VideoCard
                       key={video.id}
                       video={video}
-                      delay={index}
                       progressMs={getProgressMs(video)}
                       progressDate={progressDateKey(getProgressRow(video) ?? ({ updated_at: "" } as ProgressRecord))}
                       mode={view}
@@ -470,9 +493,10 @@ function MobileNav({ pathname, onClose }: { pathname: string; onClose: () => voi
   return (
     <div className="absolute left-0 top-12 z-50 w-56 rounded-lg border border-foreground/10 bg-white p-2 shadow-elevated">
       {[...topNav, { label: "精听", href: "/intensive", view: "intensive" as const }, { label: "生词卡", href: "/words", view: "words" as const }].map((item) => (
-        <Link
+        <PendingLink
           key={item.href}
           href={item.href}
+          showFeedback={false}
           onClick={onClose}
           className={cn(
             "flex h-10 items-center rounded-md px-3 text-sm font-black text-muted-foreground hover:bg-muted/70 hover:text-foreground",
@@ -480,7 +504,7 @@ function MobileNav({ pathname, onClose }: { pathname: string; onClose: () => voi
           )}
         >
           {item.label}
-        </Link>
+        </PendingLink>
       ))}
     </div>
   );
@@ -553,9 +577,10 @@ function LearningSidebar({
           const Icon = item.icon;
           const active = isActive(pathname, item.href);
           return (
-            <Link
+            <PendingLink
               key={item.href}
               href={item.href}
+              showFeedback={false}
               title={collapsed ? item.label : undefined}
               className={cn(
                 "group flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-black transition-colors",
@@ -567,7 +592,7 @@ function LearningSidebar({
             >
               <Icon className={cn("h-4 w-4 shrink-0", active && "text-brand")} />
               {!collapsed && <span>{item.label}</span>}
-            </Link>
+            </PendingLink>
           );
         })}
       </nav>
@@ -596,22 +621,23 @@ function LearningSidebar({
       <div className={cn("mt-auto border-t border-foreground/10 p-3", collapsed && "px-2")}>
         {showUser && userName ? (
           <div className={cn("flex items-center gap-2", collapsed && "justify-center")}>
-            <Link
+            <PendingLink
               href="/study"
+              showFeedback={false}
               className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand/10 text-sm font-black text-foreground ring-1 ring-brand/10"
               title="我的学习"
             >
               {userName.slice(0, 1).toUpperCase()}
-            </Link>
+            </PendingLink>
             {!collapsed && (
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-black">{userName}</p>
                 <div className="mt-1 flex gap-1">
                   {isAdmin && (
-                    <Link href="/admin" className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-bold text-muted-foreground hover:bg-muted/70 hover:text-foreground">
+                    <PendingLink href="/admin" className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-bold text-muted-foreground hover:bg-muted/70 hover:text-foreground">
                       <Settings className="h-3 w-3" />
                       后台
-                    </Link>
+                    </PendingLink>
                   )}
                   <button type="button" onClick={onLogout} className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-bold text-muted-foreground hover:bg-muted/70 hover:text-foreground">
                     <LogOut className="h-3 w-3" />
@@ -623,10 +649,10 @@ function LearningSidebar({
           </div>
         ) : (
           <Button variant="outline" size={collapsed ? "icon" : "sm"} className="w-full" asChild>
-            <Link href="/login">
+            <PendingLink href="/login">
               <LogIn className="h-4 w-4" />
               {!collapsed && "登录"}
-            </Link>
+            </PendingLink>
           </Button>
         )}
       </div>
@@ -887,7 +913,7 @@ function EmptyVideoState({
       </p>
       {view === "study" && (
         <Button className="mt-5" variant="brand" asChild>
-          <Link href="/library">去视频库学习</Link>
+          <PendingLink href="/library">去视频库学习</PendingLink>
         </Button>
       )}
     </div>
@@ -902,7 +928,7 @@ function WordsEmptyState() {
         当前版本还没有单词持久化数据。进入播放页打开“精读”，标记单词短语后，这里会作为统一入口展示。
       </p>
       <Button className="mt-5" variant="brand" asChild>
-        <Link href="/intensive">去精听素材</Link>
+        <PendingLink href="/intensive">去精听素材</PendingLink>
       </Button>
     </div>
   );
@@ -912,13 +938,11 @@ function VideoCard({
   video,
   progressMs,
   progressDate,
-  delay,
   mode,
 }: {
   video: VideoPublic;
   progressMs: number;
   progressDate: string | null;
-  delay: number;
   mode: WorkspaceView;
 }) {
   const hasProgress = progressMs > 3000;
@@ -928,10 +952,9 @@ function VideoCard({
   const href = mode === "intensive" ? `/learn/${video.id}` : `/videos/${video.id}`;
 
   return (
-    <Link
+    <PendingLink
       href={href}
-      style={{ animationDelay: `${Math.min(delay, 12) * 18}ms` }}
-      className="group animate-fade-up block rounded-lg bg-white p-2 shadow-sm ring-1 ring-foreground/10 transition-all hover:-translate-y-1 hover:shadow-elevated"
+      className="group block rounded-lg bg-white p-2 shadow-sm ring-1 ring-foreground/10 transition-all hover:-translate-y-1 hover:shadow-elevated"
     >
       <div className="relative overflow-hidden rounded-xl bg-secondary">
         <VideoCover src={video.cover_url} alt={video.title} className="rounded-xl" />
@@ -973,6 +996,6 @@ function VideoCard({
           {progressDate && mode === "study" && <span>{progressDate}</span>}
         </div>
       </div>
-    </Link>
+    </PendingLink>
   );
 }

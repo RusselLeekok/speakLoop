@@ -218,6 +218,11 @@ class AdminStatsOut(BaseModel):
     recent: list[VideoAdminOut]
 
 
+class TagOut(BaseModel):
+    id: int
+    name: str
+
+
 # ---------- progress ----------
 
 class ProgressIn(BaseModel):

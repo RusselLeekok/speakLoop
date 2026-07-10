@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Compass, Library, LogIn, LogOut, Radio, Settings, User as UserIcon } from "lucide-react";
 
+import { PendingLink } from "@/components/pending-link";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/lib/auth";
+import { prewarmRoutes } from "@/lib/route-prewarm";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -16,10 +18,19 @@ const LINKS = [
 
 export function SiteHeader() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, logout, hydrated } = useAuthStore();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const showUser = mounted && hydrated;
+
+  useEffect(() => {
+    if (!showUser || user?.role !== "admin") return;
+    router.prefetch("/admin");
+    router.prefetch("/admin/videos");
+    router.prefetch("/admin/videos/new");
+    prewarmRoutes(["/admin", "/admin/videos", "/admin/videos/new"]);
+  }, [router, showUser, user?.role]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-foreground/10 bg-background/80 backdrop-blur-xl">
@@ -61,10 +72,10 @@ export function SiteHeader() {
               </span>
               {user.role === "admin" && (
                 <Button variant="outline" size="sm" asChild>
-                  <Link href="/admin">
+                  <PendingLink href="/admin">
                     <Settings className="h-4 w-4" />
                     后台
-                  </Link>
+                  </PendingLink>
                 </Button>
               )}
               <Button variant="ghost" size="sm" onClick={logout}>

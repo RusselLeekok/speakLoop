@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Clapperboard, LayoutDashboard, LogOut, MonitorPlay, Radio } from "lucide-react";
 
+import { PendingLink } from "@/components/pending-link";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const isLoginPage = pathname === "/admin/login";
   const ready = mounted && hydrated;
   const isAdmin = user?.role === "admin";
+  const widePage = pathname === "/admin/videos/new" || /^\/admin\/videos\/[^/]+\/edit$/.test(pathname);
 
   useEffect(() => {
     if (ready && !isLoginPage && !isAdmin) router.replace("/admin/login");
@@ -43,18 +44,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="min-h-screen bg-aurora">
       <header className="sticky top-0 z-40 border-b border-foreground/10 bg-background/80 backdrop-blur-xl">
         <div className="container flex h-16 items-center justify-between gap-4">
-          <Link href="/admin" className="flex items-center gap-2.5 text-lg font-black tracking-tight">
+          <PendingLink href="/admin" className="flex items-center gap-2.5 text-lg font-black tracking-tight">
             <span className="wave-field liquid-accent flex h-10 w-10 items-center justify-center">
               <Radio className="relative z-10 h-4 w-4" />
             </span>
             SpeakLoop 后台
-          </Link>
+          </PendingLink>
 
           <nav className="hidden items-center gap-1 md:flex" aria-label="后台导航">
             {NAV.map((item) => {
               const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
               return (
-                <Link
+                <PendingLink
                   key={item.href}
                   href={item.href}
                   className={cn(
@@ -66,17 +67,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 >
                   <item.icon className="h-3.5 w-3.5" />
                   {item.label}
-                </Link>
+                </PendingLink>
               );
             })}
           </nav>
 
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/">
+              <PendingLink href="/">
                 <MonitorPlay className="h-4 w-4" />
                 前台
-              </Link>
+              </PendingLink>
             </Button>
             <Button
               variant="ghost"
@@ -93,13 +94,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </header>
 
-      <main id="main-content" className="container py-8 md:py-10">
+      <main id="main-content" className={cn(widePage ? "px-4 py-8 md:px-6 md:py-10" : "container py-8 md:py-10")}>
         <div className="mb-5 flex gap-2 md:hidden">
           {NAV.map((item) => {
             const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
             return (
               <Button key={item.href} variant={active ? "secondary" : "outline"} size="sm" asChild>
-                <Link href={item.href}>{item.label}</Link>
+                <PendingLink href={item.href}>{item.label}</PendingLink>
               </Button>
             );
           })}

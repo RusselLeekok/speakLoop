@@ -86,10 +86,6 @@ services:
     ports:
       - "${FRONTEND_PRIMARY_PORT:-3000}:3000"
       - "${FRONTEND_PORT:-13000}:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
     depends_on:
       - backend
 

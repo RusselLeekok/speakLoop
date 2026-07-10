@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Clapperboard, FileClock, Plus } from "lucide-react";
 
+import { PendingLink } from "@/components/pending-link";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,10 +37,10 @@ export default function AdminDashboardPage() {
           </p>
         </div>
         <Button variant="brand" asChild>
-          <Link href="/admin/videos/new">
+          <PendingLink href="/admin/videos/new">
             <Plus />
             新增视频
-          </Link>
+          </PendingLink>
         </Button>
       </div>
 
@@ -71,7 +71,7 @@ export default function AdminDashboardPage() {
             <p className="mt-1 text-sm font-semibold text-muted-foreground">快速进入最近素材的编辑和字幕检查。</p>
           </div>
           <Button variant="outline" size="sm" asChild>
-            <Link href="/admin/videos">查看全部</Link>
+            <PendingLink href="/admin/videos">查看全部</PendingLink>
           </Button>
         </CardHeader>
         <CardContent className="pt-6">
@@ -96,9 +96,9 @@ export default function AdminDashboardPage() {
                 {stats.recent.map((v) => (
                   <TableRow key={v.id}>
                     <TableCell>
-                      <Link href={`/admin/videos/${v.id}/edit`} className="font-black text-foreground underline-offset-4 hover:text-brand hover:underline">
+                      <PendingLink href={`/admin/videos/${v.id}/edit`} className="font-black text-foreground underline-offset-4 hover:text-brand hover:underline">
                         {v.title}
-                      </Link>
+                      </PendingLink>
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={v.status} />
@@ -114,7 +114,7 @@ export default function AdminDashboardPage() {
             <div className="doodle-note py-12 text-center">
               <p className="text-sm font-bold text-foreground">还没有视频。先上传一条素材，首页就会有内容可练。</p>
               <Button className="mt-4" variant="brand" asChild>
-                <Link href="/admin/videos/new">新增视频</Link>
+                <PendingLink href="/admin/videos/new">新增视频</PendingLink>
               </Button>
             </div>
           )}

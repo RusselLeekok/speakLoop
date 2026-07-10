@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Captions, Clock, Play, RotateCcw } from "lucide-react";
 
+import { PendingLink } from "@/components/pending-link";
 import { SiteHeader } from "@/components/site-header";
 import { VideoCover } from "@/components/video-cover";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +21,12 @@ export default function VideoDetailPage() {
   const params = useParams<{ videoId: string }>();
   const videoId = Number(params.videoId);
   const token = useAuthStore((s) => s.token);
+  const [localProgressMs, setLocalProgressMs] = useState(0);
+
+  useEffect(() => {
+    if (!Number.isFinite(videoId)) return;
+    setLocalProgressMs(getLocalProgress(videoId)?.last_time_ms ?? 0);
+  }, [videoId]);
 
   const { data: video, isLoading, error } = useQuery({
     queryKey: ["video", videoId],
@@ -33,8 +40,7 @@ export default function VideoDetailPage() {
     enabled: !!token && Number.isFinite(videoId),
   });
 
-  const progressMs =
-    serverProgress?.last_time_ms ?? getLocalProgress(videoId)?.last_time_ms ?? 0;
+  const progressMs = serverProgress?.last_time_ms ?? localProgressMs;
   const hasProgress = progressMs > 3000;
   const tags = video?.tags?.length ? video.tags.slice(0, 4) : video?.category ? [video.category] : [];
 
@@ -51,39 +57,41 @@ export default function VideoDetailPage() {
           <div className="surface flex flex-col items-center gap-4 py-20 text-center">
             <p className="text-lg font-black">视频不存在或暂未发布</p>
             <Button variant="outline" asChild>
-              <Link href="/">返回首页</Link>
+              <PendingLink href="/">返回首页</PendingLink>
             </Button>
           </div>
         ) : (
           <article className="surface animate-fade-up overflow-hidden bg-white/90 p-3 md:p-4">
-            <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.18fr)_minmax(320px,0.82fr)]">
-              <Link
+            <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.18fr)_minmax(320px,0.82fr)]">
+              <PendingLink
                 href={`/learn/${video.id}`}
-                className="group relative block overflow-hidden rounded-lg bg-secondary shadow-elevated ring-1 ring-foreground/10"
+                className="group block overflow-hidden rounded-lg bg-white shadow-elevated ring-1 ring-foreground/10"
                 aria-label={`播放 ${video.title}`}
               >
-                <VideoCover src={video.cover_url} alt={video.title} className="rounded-lg" />
-                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(18,27,43,0.72),transparent_46%),linear-gradient(to_bottom,rgba(255,255,255,0.16),transparent_28%)]" />
-                <span className="absolute left-4 top-4 rounded-md bg-white/90 px-3 py-1 text-xs font-black text-foreground shadow-soft backdrop-blur">
-                  素材预览
-                </span>
-                <span className="absolute right-4 top-4 flex items-center gap-1 rounded-md bg-foreground/80 px-3 py-1 text-xs font-black text-white shadow-soft backdrop-blur">
-                  <Clock className="h-3.5 w-3.5" />
-                  {formatDuration(video.duration)}
-                </span>
-                <span className="absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/70 bg-white/90 text-foreground shadow-elevated backdrop-blur transition-transform group-hover:scale-105">
-                  <Play className="ml-1 h-7 w-7" />
-                </span>
-                <div className="absolute inset-x-0 bottom-0 p-5 text-white">
-                  <p className="line-clamp-2 text-xl font-black leading-tight drop-shadow md:text-2xl">
+                <div className="relative overflow-hidden rounded-t-lg bg-secondary">
+                  <VideoCover src={video.cover_url} alt={video.title} className="rounded-t-lg" />
+                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(18,27,43,0.34),transparent_45%),linear-gradient(to_bottom,rgba(255,255,255,0.16),transparent_28%)]" />
+                  <span className="absolute left-4 top-4 rounded-md bg-white/90 px-3 py-1 text-xs font-black text-foreground shadow-soft backdrop-blur">
+                    素材预览
+                  </span>
+                  <span className="absolute right-4 top-4 flex items-center gap-1 rounded-md bg-foreground/80 px-3 py-1 text-xs font-black text-white shadow-soft backdrop-blur">
+                    <Clock className="h-3.5 w-3.5" />
+                    {formatDuration(video.duration)}
+                  </span>
+                  <span className="absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/70 bg-white/90 text-foreground shadow-elevated backdrop-blur transition-transform group-hover:scale-105">
+                    <Play className="ml-1 h-7 w-7" />
+                  </span>
+                </div>
+                <div className="space-y-2 p-5">
+                  <h1 className="text-2xl font-black leading-tight text-foreground md:text-3xl">
                     {video.title}
-                  </p>
-                  <p className="mt-2 flex items-center gap-2 text-sm font-bold text-white/90">
+                  </h1>
+                  <p className="flex items-center gap-2 text-sm font-bold text-muted-foreground">
                     <Captions className="h-4 w-4" />
                     {video.subtitle_count} 句字幕 · 点击进入练习
                   </p>
                 </div>
-              </Link>
+              </PendingLink>
 
               <div className="flex flex-col justify-between rounded-lg bg-white/60 p-6 ring-1 ring-foreground/10 md:p-8">
                 <div className="space-y-5">
@@ -101,24 +109,21 @@ export default function VideoDetailPage() {
                       {video.subtitle_count} 句字幕
                     </span>
                   </div>
-                  <h1 className="text-4xl font-black leading-tight tracking-[-0.02em] md:text-5xl">
-                    {video.title}
-                  </h1>
                   <p className="doodle-note whitespace-pre-wrap p-4 text-sm font-semibold leading-7 text-foreground">
                     {video.description || "暂无简介。可以直接开始练习，边听边建立自己的句子节奏。"}
                   </p>
                 </div>
                 <div className="mt-8 flex flex-wrap gap-3">
                   <Button size="lg" variant="brand" asChild>
-                    <Link href={`/learn/${video.id}`}>
+                    <PendingLink href={`/learn/${video.id}`}>
                       {hasProgress ? <RotateCcw /> : <Play />}
                       {hasProgress
                         ? `继续学习（${formatDuration(progressMs / 1000)}）`
                         : "开始学习"}
-                    </Link>
+                    </PendingLink>
                   </Button>
                   <Button size="lg" variant="outline" asChild>
-                    <Link href="/#materials">返回列表</Link>
+                    <PendingLink href="/#materials">返回列表</PendingLink>
                   </Button>
                 </div>
               </div>

@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowLeft, ShieldCheck } from "lucide-react";
 
+import { PendingLink } from "@/components/pending-link";
+import { useNavigationFeedback } from "@/components/navigation-feedback";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import type { LoginResponse } from "@/lib/types";
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const navigation = useNavigationFeedback();
   const setAuth = useAuthStore((s) => s.setAuth);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -32,6 +34,7 @@ export default function AdminLoginPage() {
         return;
       }
       setAuth(res.access_token, res.user);
+      navigation.start();
       router.push("/admin");
     } catch (err) {
       setError(err instanceof Error ? err.message : "登录失败，请检查账号和密码。");
@@ -43,10 +46,10 @@ export default function AdminLoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-auth-glow px-4 py-10">
       <div className="w-full max-w-md">
-        <Link href="/" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground">
+        <PendingLink href="/" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />
           返回前台
-        </Link>
+        </PendingLink>
         <Card className="animate-fade-up">
           <CardHeader className="border-b border-foreground/10">
             <span className="liquid-accent mb-3 flex h-12 w-12 items-center justify-center">

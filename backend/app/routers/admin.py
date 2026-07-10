@@ -7,7 +7,7 @@ import re
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, load_only, selectinload
 
 from .. import storage
 from ..database import get_db
@@ -24,6 +24,7 @@ from ..schemas import (
     SubtitleExtractRequest,
     SubtitleOut,
     SubtitleTranscribeRequest,
+    TagOut,
     TaskCreatedOut,
     UploadResultOut,
     UrlImportRequest,
@@ -44,6 +45,28 @@ from ..tasks import (
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+
+VIDEO_ADMIN_LOAD_FIELDS = (
+    Video.id,
+    Video.title,
+    Video.description,
+    Video.category,
+    Video.source_type,
+    Video.source_url,
+    Video.original_filename,
+    Video.file_url,
+    Video.cover_url,
+    Video.duration,
+    Video.container_format,
+    Video.file_size,
+    Video.mime_type,
+    Video.status,
+    Video.error_message,
+    Video.subtitle_count,
+    Video.created_at,
+    Video.updated_at,
+    Video.published_at,
+)
 
 
 def _normalize_tags(values: list[str] | None) -> list[str]:
@@ -122,6 +145,19 @@ def _create_processing_task(db: Session, video_id: int | None, task_type: str) -
     db.add(task)
     db.flush()
     return task
+
+
+def _get_active_processing_task(db: Session, video_id: int, task_type: str) -> ProcessingTask | None:
+    return db.scalar(
+        select(ProcessingTask)
+        .where(
+            ProcessingTask.video_id == video_id,
+            ProcessingTask.task_type == task_type,
+            ProcessingTask.status.in_(("queued", "running")),
+        )
+        .order_by(ProcessingTask.id.desc())
+        .limit(1)
+    )
 
 
 def _attach_celery_id(db: Session, task_id: int, celery_id: str) -> None:
@@ -221,13 +257,20 @@ def _parse_pair(
 
 # ---------- 统计 ----------
 
+
+@router.get("/tags", response_model=list[TagOut])
+def list_tags(db: Session = Depends(get_db)):
+    tags = db.scalars(select(Tag).order_by(Tag.sort_order, Tag.name)).all()
+    return [TagOut(id=tag.id, name=tag.name) for tag in tags]
+
+
 @router.get("/stats", response_model=AdminStatsOut)
 def stats(db: Session = Depends(get_db)):
     rows = db.execute(select(Video.status, func.count()).group_by(Video.status)).all()
     counts = {status: count for status, count in rows}
     recent = db.scalars(
         select(Video)
-        .options(selectinload(Video.tag_links).selectinload(VideoTag.tag))
+        .options(load_only(*VIDEO_ADMIN_LOAD_FIELDS), selectinload(Video.tag_links).selectinload(VideoTag.tag))
         .order_by(Video.created_at.desc())
         .limit(5)
     ).all()
@@ -253,7 +296,7 @@ def list_videos(
     page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    query = select(Video).options(selectinload(Video.tag_links).selectinload(VideoTag.tag))
+    query = select(Video).options(load_only(*VIDEO_ADMIN_LOAD_FIELDS), selectinload(Video.tag_links).selectinload(VideoTag.tag))
     if keyword:
         like = f"%{keyword}%"
         query = query.where(Video.title.like(like) | Video.description.like(like))
@@ -570,6 +613,7 @@ def reupload_subtitles(
         _save_subtitle_source(db, video, zh_subtitle_file, zh_data, "zh")
     _apply_parsed_subtitles(db, video, en_cues, zh_texts, warnings)
     video.status = "published" if was_published else "ready"
+    video.error_message = None
     db.commit()
     return ReuploadResultOut(
         video_id=video.id, status=video.status,
@@ -584,6 +628,9 @@ def extract_subtitles(
     db: Session = Depends(get_db),
 ):
     video = _get_video_or_404(db, video_id)
+    active_task = _get_active_processing_task(db, video.id, "extract_subtitle")
+    if active_task is not None:
+        return TaskCreatedOut(task_id=active_task.id, video_id=video.id)
     primary = db.get(VideoTrack, body.primary_track_id)
     if primary is None or primary.video_id != video.id or primary.track_type != "subtitle":
         raise HTTPException(status_code=404, detail="字幕轨不存在")
@@ -592,7 +639,6 @@ def extract_subtitles(
         if zh_track is None or zh_track.video_id != video.id or zh_track.track_type != "subtitle":
             raise HTTPException(status_code=404, detail="中文字幕轨不存在")
     task = _create_processing_task(db, video.id, "extract_subtitle")
-    video.status = "processing"
     db.commit()
     result = extract_subtitle_for_video_task.delay(
         task.id, video.id, body.primary_track_id, body.zh_track_id, body.publish_now
@@ -608,12 +654,16 @@ def transcribe_subtitles(
     db: Session = Depends(get_db),
 ):
     video = _get_video_or_404(db, video_id)
+    active_task = _get_active_processing_task(db, video.id, "transcribe")
+    if active_task is not None:
+        return TaskCreatedOut(task_id=active_task.id, video_id=video.id)
+    if video.subtitle_count > 0 and video.status in ("ready", "published", "unpublished"):
+        return TaskCreatedOut(task_id=0, video_id=video.id)
     if body.audio_track_id is not None:
         track = db.get(VideoTrack, body.audio_track_id)
         if track is None or track.video_id != video.id or track.track_type != "audio":
             raise HTTPException(status_code=404, detail="音频轨不存在")
     task = _create_processing_task(db, video.id, "transcribe")
-    video.status = "processing"
     db.commit()
     result = transcribe_video_task.delay(
         task.id,
@@ -660,6 +710,8 @@ def save_subtitles(video_id: int, body: SubtitleEditRequest, db: Session = Depen
     video.subtitle_count = len(rows)
     if video.status in ("failed", "needs_subtitle"):
         video.status = "ready"
+    if rows:
+        video.error_message = None
     db.commit()
     return get_subtitles(video_id, db)
 

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -8,7 +7,6 @@ import {
   CheckCircle2,
   FileVideo2,
   Link2,
-  ListChecks,
   Loader2,
   PenLine,
   Sparkles,
@@ -17,6 +15,8 @@ import {
 } from "lucide-react";
 
 import { FileDropField } from "@/components/file-drop-field";
+import { VideoFinalizePanel } from "@/components/admin/video-finalize-panel";
+import { PendingLink } from "@/components/pending-link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -34,18 +34,15 @@ const sourceOptions: Array<{
   mode: Mode;
   title: string;
   badge?: string;
-  description: string;
 }> = [
   {
     mode: "url",
     title: "在线视频 URL",
     badge: "推荐",
-    description: "粘贴链接后系统会下载视频、检测字幕轨；没有字幕时自动生成字幕初稿。",
   },
   {
     mode: "upload",
     title: "本地视频文件",
-    description: "上传自己的视频。字幕文件可以一起上传，也可以导入后再处理。",
   },
 ];
 
@@ -182,14 +179,52 @@ export default function AdminVideoNewPage() {
   const task = taskQuery.data;
   const pending = uploading || isTaskPending(task);
   const taskProgress = task?.progress ?? (uploading ? progress : 0);
+  const taskCompleted = task?.status === "completed" && videoId != null;
+  const finalVideoQuery = useQuery({
+    queryKey: ["admin-video", videoId],
+    queryFn: () => api.get<VideoAdmin>(`/api/admin/videos/${videoId}`),
+    enabled: taskCompleted,
+  });
+  const finalTracksQuery = useQuery({
+    queryKey: ["admin-video-tracks", videoId],
+    queryFn: () => api.get<VideoTrack[]>(`/api/admin/videos/${videoId}/tracks`),
+    enabled: taskCompleted,
+  });
+  const finalReady = taskCompleted && finalVideoQuery.data && finalTracksQuery.data;
+
+  if (taskCompleted && videoId != null) {
+    return (
+      <div className="mx-auto w-full max-w-5xl space-y-6">
+        <ImportStepper pending={!finalReady} completed={!!finalReady} />
+        {!finalReady ? (
+          <Card className="bg-white">
+            <CardContent className="space-y-3 pt-6">
+              <div className="flex items-start gap-3">
+                <Loader2 className="mt-1 h-5 w-5 animate-spin text-brand" />
+                <div>
+                  <h2 className="text-xl font-black">正在完成字幕轨道检测</h2>
+                  <p className="mt-1 text-sm font-semibold text-muted-foreground">
+                    视频已经加载完成，正在读取视频信息和字幕轨道。完成后进入封面、标题、标签和发布步骤。
+                  </p>
+                </div>
+              </div>
+              <ProgressBar value={96} />
+            </CardContent>
+          </Card>
+        ) : (
+          <VideoFinalizePanel videoId={videoId} />
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-4xl space-y-6">
       <div className="flex items-start gap-3">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/videos" aria-label="返回视频列表">
+          <PendingLink href="/admin/videos" aria-label="返回视频列表">
             <ArrowLeft />
-          </Link>
+          </PendingLink>
         </Button>
         <div className="min-w-0 flex-1">
           <div className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-white/80 px-3 py-1 text-xs font-black text-brand shadow-sm">
@@ -197,9 +232,6 @@ export default function AdminVideoNewPage() {
             URL 优先 · 字幕可后处理
           </div>
           <h1 className="mt-3 text-3xl font-black tracking-normal sm:text-4xl">导入学习视频</h1>
-          <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-muted-foreground">
-            先把视频导入进来，系统会自动检测字幕轨；没有字幕时生成可编辑的字幕初稿。导入完成后再逐句检查和修改。
-          </p>
         </div>
       </div>
 
@@ -211,9 +243,6 @@ export default function AdminVideoNewPage() {
             <section className="space-y-3">
               <div>
                 <h2 className="text-xl font-black">1. 选择视频来源</h2>
-                <p className="mt-1 text-sm font-semibold text-muted-foreground">
-                  大多数学习素材来自网络链接，所以这里默认使用 URL 导入。
-                </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {sourceOptions.map((item) => {
@@ -247,7 +276,6 @@ export default function AdminVideoNewPage() {
                               </span>
                             )}
                           </span>
-                          <span className="mt-1 block text-sm font-semibold leading-5 text-muted-foreground">{item.description}</span>
                         </span>
                       </span>
                     </button>
@@ -256,7 +284,7 @@ export default function AdminVideoNewPage() {
               </div>
             </section>
 
-            <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+            <section className="space-y-5">
               <div className="space-y-5">
                 {mode === "url" ? (
                   <div className="space-y-2">
@@ -269,9 +297,6 @@ export default function AdminVideoNewPage() {
                       className="h-12 text-base font-bold"
                       autoFocus
                     />
-                    <p className="text-xs font-semibold text-muted-foreground">
-                      支持 yt-dlp 可下载的视频链接。系统会保存本地副本，方便稳定播放和字幕处理。
-                    </p>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -318,7 +343,7 @@ export default function AdminVideoNewPage() {
                   onClick={() => setShowDetails((value) => !value)}
                 >
                   <PenLine className="h-4 w-4" />
-                  {showDetails ? "收起可选信息" : "可选：标题、标签、简介和封面"}
+                  {showDetails ? "收起" : "更多信息"}
                 </button>
 
                 {showDetails && (
@@ -361,18 +386,6 @@ export default function AdminVideoNewPage() {
                 </label>
               </div>
 
-              <div className="rounded-lg border border-brand/20 bg-brand/5 p-4">
-                <h3 className="flex items-center gap-2 text-base font-black">
-                  <ListChecks className="h-4 w-4 text-brand" />
-                  系统会怎么处理
-                </h3>
-                <ol className="mt-3 space-y-3 text-sm font-semibold leading-5 text-muted-foreground">
-                  <li className="flex gap-2"><span className="font-black text-foreground">1</span>保存视频，并生成封面和时长信息。</li>
-                  <li className="flex gap-2"><span className="font-black text-foreground">2</span>检测视频里的字幕轨和音频轨。</li>
-                  <li className="flex gap-2"><span className="font-black text-foreground">3</span>有字幕就自动提取；多个字幕轨会让你选择。</li>
-                  <li className="flex gap-2"><span className="font-black text-foreground">4</span>没有字幕时自动生成字幕初稿，之后可逐句修改。</li>
-                </ol>
-              </div>
             </section>
 
             {(uploading || task) && (
@@ -400,7 +413,7 @@ export default function AdminVideoNewPage() {
                 )}
               </Button>
               <Button type="button" variant="outline" size="lg" asChild>
-                <Link href="/admin/videos">稍后再导入</Link>
+                <PendingLink href="/admin/videos">稍后再导入</PendingLink>
               </Button>
             </div>
           </form>
@@ -413,8 +426,8 @@ export default function AdminVideoNewPage() {
 function ImportStepper({ pending, completed }: { pending: boolean; completed: boolean }) {
   const steps = [
     { label: "选择来源", active: true },
-    { label: "字幕准备方式", active: pending || completed },
-    { label: "检查并修改", active: completed },
+    { label: "导入与轨道检测", active: pending || completed },
+    { label: "封面与发布", active: completed },
   ];
   return (
     <div className="grid gap-2 rounded-lg border border-foreground/10 bg-white/70 p-2 shadow-sm sm:grid-cols-3">
@@ -497,10 +510,10 @@ function ProcessingCard({
           {failed && videoId && (
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="brand" asChild>
-                <Link href={`/admin/videos/${videoId}/edit`}>去字幕来源处理</Link>
+                <PendingLink href={`/admin/videos/${videoId}/edit`}>去字幕来源处理</PendingLink>
               </Button>
               <Button size="sm" variant="outline" asChild>
-                <Link href="/admin/videos/new">重新导入</Link>
+                <PendingLink href="/admin/videos/new">重新导入</PendingLink>
               </Button>
             </div>
           )}
@@ -539,10 +552,10 @@ function TaskOutcome({ task, videoId }: { task?: ProcessingTask | null; videoId:
         </p>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="brand" asChild>
-            <Link href={`/admin/videos/${videoId}/edit`}>预览并完成发布</Link>
+            <PendingLink href={`/admin/videos/${videoId}/edit`}>预览并完成发布</PendingLink>
           </Button>
           <Button size="sm" variant="outline" asChild>
-            <Link href={`/admin/videos/${videoId}/subtitles`}>检查字幕</Link>
+            <PendingLink href={`/admin/videos/${videoId}/subtitles`}>检查字幕</PendingLink>
           </Button>
         </div>
       </div>
@@ -556,7 +569,7 @@ function TaskOutcome({ task, videoId }: { task?: ProcessingTask | null; videoId:
           发现 {subtitleTracks.length} 个字幕轨。请选择一个作为学习字幕，也可以选择中文字幕轨用于双语显示。
         </p>
         <Button size="sm" variant="brand" asChild>
-          <Link href={`/admin/videos/${videoId}/edit`}>选择字幕轨</Link>
+          <PendingLink href={`/admin/videos/${videoId}/edit`}>选择字幕轨</PendingLink>
         </Button>
       </div>
     );
@@ -569,10 +582,10 @@ function TaskOutcome({ task, videoId }: { task?: ProcessingTask | null; videoId:
       </p>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="brand" asChild>
-          <Link href={`/admin/videos/${videoId}/edit`}>预览并完善信息</Link>
+          <PendingLink href={`/admin/videos/${videoId}/edit`}>预览并完善信息</PendingLink>
         </Button>
         <Button size="sm" variant="outline" asChild>
-          <Link href={`/admin/videos/${videoId}/edit#subtitle-source`}>准备字幕</Link>
+          <PendingLink href={`/admin/videos/${videoId}/edit#subtitle-source`}>准备字幕</PendingLink>
         </Button>
       </div>
     </div>

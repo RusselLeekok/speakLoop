@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Captions, Pencil, Plus, Search, Trash2 } from "lucide-react";
 
+import { PendingLink } from "@/components/pending-link";
 import { StatusBadge } from "@/components/status-badge";
 import { VideoCover } from "@/components/video-cover";
 import { Button } from "@/components/ui/button";
@@ -79,10 +79,10 @@ export default function AdminVideosPage() {
           <p className="mt-2 text-sm font-semibold text-muted-foreground">共 {data?.total ?? "..."} 个视频</p>
         </div>
         <Button variant="brand" asChild>
-          <Link href="/admin/videos/new">
+          <PendingLink href="/admin/videos/new">
             <Plus />
             新增视频
-          </Link>
+          </PendingLink>
         </Button>
       </div>
 
@@ -175,10 +175,10 @@ export default function AdminVideosPage() {
                           <Button size="sm" variant="outline" onClick={() => statusMutation.mutate({ id: v.id, newStatus: "unpublished" })} disabled={statusMutation.isPending}>下架</Button>
                         )}
                         <Button size="sm" variant="ghost" asChild title="字幕预览">
-                          <Link href={`/admin/videos/${v.id}/subtitles`}><Captions className="h-4 w-4" /></Link>
+                          <PendingLink href={`/admin/videos/${v.id}/subtitles`}><Captions className="h-4 w-4" /></PendingLink>
                         </Button>
                         <Button size="sm" variant="ghost" asChild title="编辑">
-                          <Link href={`/admin/videos/${v.id}/edit`}><Pencil className="h-4 w-4" /></Link>
+                          <PendingLink href={`/admin/videos/${v.id}/edit`}><Pencil className="h-4 w-4" /></PendingLink>
                         </Button>
                         <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" title="删除" onClick={() => setDeleteTarget(v)}>
                           <Trash2 className="h-4 w-4" />
