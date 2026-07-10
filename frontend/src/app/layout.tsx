@@ -12,8 +12,11 @@ export const metadata: Metadata = {
   },
   description: "逐句精听、循环跟读、自动记录进度的英语学习播放器。",
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
-    shortcut: ["/icon.svg"],
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    shortcut: ["/favicon.ico"],
   },
   openGraph: {
     title: "SpeakLoop",
