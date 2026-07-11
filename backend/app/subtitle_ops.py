@@ -128,6 +128,7 @@ def replace_with_whisper_segments(db: Session, video: Video, source_path: Path, 
                 end_ms=int(round(float(segment["end_seconds"]) * 1000)),
                 en_text=str(segment.get("text") or "").strip(),
                 zh_text=None,
+                alignment_json=segment.get("alignment_json"),
                 sort_order=order,
             )
         )

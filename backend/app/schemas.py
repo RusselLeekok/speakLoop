@@ -41,12 +41,17 @@ class SubtitleOut(BaseModel):
     sort_order: int
 
 
+class AdminSubtitleOut(SubtitleOut):
+    alignment_json: dict | None = None
+
+
 class SubtitleEditIn(BaseModel):
     id: int | None = None
     start_ms: int = Field(ge=0)
     end_ms: int = Field(gt=0)
     en_text: str | None = None
     zh_text: str | None = None
+    alignment_json: dict | None = None
     sort_order: int = Field(ge=0)
 
 
@@ -204,7 +209,7 @@ class SubtitleTranscribeRequest(BaseModel):
 class AdminSubtitlesOut(BaseModel):
     video_id: int
     subtitle_count: int
-    subtitles: list[SubtitleOut]
+    subtitles: list[AdminSubtitleOut]
     warnings: list[WarningOut]
 
 

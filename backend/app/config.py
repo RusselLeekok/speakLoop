@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     max_subtitle_size_mb: int = 5
     max_cover_size_mb: int = 10
 
-    whisper_model_size: str = "small"
+    whisper_model_size: str = "medium"
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
 

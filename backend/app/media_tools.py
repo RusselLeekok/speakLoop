@@ -233,6 +233,7 @@ def split_whisper_segment_words(segment: object, sequence: int, max_chars: int, 
                 "start_seconds": float(getattr(segment, "start", 0.0)),
                 "end_seconds": float(getattr(segment, "end", 0.0)),
                 "text": clean_subtitle_text(getattr(segment, "text", "")),
+                "alignment_json": None,
             }
         ], sequence + 1
 
@@ -245,12 +246,25 @@ def split_whisper_segment_words(segment: object, sequence: int, max_chars: int, 
         nonlocal sequence, chunk
         text = clean_subtitle_text("".join(item["text"] for item in chunk))
         if text:
+            alignment_words = [
+                {
+                    "text": item["text"],
+                    "start_ms": int(round(item["start"] * 1000)),
+                    "end_ms": int(round(item["end"] * 1000)),
+                }
+                for item in chunk
+            ]
             rows.append(
                 {
                     "sequence": sequence,
                     "start_seconds": chunk[0]["start"],
                     "end_seconds": max(chunk[-1]["end"], chunk[0]["start"] + 0.15),
                     "text": text,
+                    "alignment_json": {
+                        "source": "faster-whisper",
+                        "version": 1,
+                        "words": alignment_words,
+                    },
                 }
             )
             sequence += 1
@@ -317,6 +331,7 @@ def transcribe_audio(
                     "start_seconds": float(segment.start),
                     "end_seconds": float(segment.end),
                     "text": str(segment.text).strip(),
+                    "alignment_json": None,
                 }
             )
     subtitle_path = unique_path("subtitles", "srt", "whisper_subtitle")

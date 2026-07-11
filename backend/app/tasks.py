@@ -149,7 +149,7 @@ def _finish_after_analysis(
 
     _set_task(db, task, "running", 80)
     audio_path = extract_audio_for_transcription(Path(video.file_path), audio_track.stream_index, logger)
-    subtitle_path, segments = transcribe_audio(audio_path, None, logger=logger)
+    subtitle_path, segments = transcribe_audio(audio_path, None, logger=logger, split_enabled=True)
     try:
         audio_path.unlink(missing_ok=True)
     except OSError:

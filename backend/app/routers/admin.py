@@ -18,11 +18,11 @@ from ..schemas import (
     VIDEO_STATUSES,
     AdminStatsOut,
     AdminSubtitlesOut,
+    AdminSubtitleOut,
     ProcessingTaskOut,
     ReuploadResultOut,
     SubtitleEditRequest,
     SubtitleExtractRequest,
-    SubtitleOut,
     SubtitleTranscribeRequest,
     TagOut,
     TaskCreatedOut,
@@ -704,6 +704,7 @@ def save_subtitles(video_id: int, body: SubtitleEditRequest, db: Session = Depen
                 end_ms=item.end_ms,
                 en_text=item.en_text.strip() if item.en_text else None,
                 zh_text=item.zh_text.strip() if item.zh_text else None,
+                alignment_json=item.alignment_json,
                 sort_order=order,
             )
         )
@@ -728,6 +729,6 @@ def get_subtitles(video_id: int, db: Session = Depends(get_db)):
     return AdminSubtitlesOut(
         video_id=video.id,
         subtitle_count=video.subtitle_count,
-        subtitles=[SubtitleOut.model_validate(s) for s in subtitles],
+        subtitles=[AdminSubtitleOut.model_validate(s) for s in subtitles],
         warnings=[WarningOut.model_validate(w) for w in warnings],
     )

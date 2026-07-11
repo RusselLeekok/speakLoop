@@ -41,7 +41,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123456}
       DEMO_USERNAME: ${DEMO_USERNAME:-user}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-user123456}
-      WHISPER_MODEL_SIZE: ${WHISPER_MODEL_SIZE:-small}
+      WHISPER_MODEL_SIZE: ${WHISPER_MODEL_SIZE:-medium}
       WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
       WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -66,7 +66,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me}
       AUTO_CREATE_TABLES: ${AUTO_CREATE_TABLES:-true}
       SEED_DEFAULT_USERS: ${SEED_DEFAULT_USERS:-false}
-      WHISPER_MODEL_SIZE: ${WHISPER_MODEL_SIZE:-small}
+      WHISPER_MODEL_SIZE: ${WHISPER_MODEL_SIZE:-medium}
       WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
       WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
     command: celery -A app.celery_app.celery_app worker --loglevel=INFO

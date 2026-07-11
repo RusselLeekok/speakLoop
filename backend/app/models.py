@@ -212,6 +212,7 @@ class Subtitle(Base):
     end_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     en_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     zh_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    alignment_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

@@ -37,7 +37,7 @@ import { ProgressBar } from "@/components/ui/progress-bar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import type { AdminSubtitles, ProcessingTask, Subtitle, TaskCreated, VideoAdmin, VideoTrack } from "@/lib/types";
+import type { AdminSubtitles, ProcessingTask, Subtitle, SubtitleAlignment, SubtitleAlignmentWord, TaskCreated, VideoAdmin, VideoTrack } from "@/lib/types";
 import { cn, formatMs } from "@/lib/utils";
 
 type EditableSubtitle = {
@@ -46,6 +46,7 @@ type EditableSubtitle = {
   end_ms: number;
   en_text: string;
   zh_text: string;
+  alignment_json: SubtitleAlignment | null;
   sort_order: number;
 };
 
@@ -59,6 +60,7 @@ function toEditable(subtitles: Subtitle[]): EditableSubtitle[] {
     end_ms: item.end_ms,
     en_text: item.en_text ?? "",
     zh_text: item.zh_text ?? "",
+    alignment_json: cloneAlignment(item.alignment_json ?? null),
     sort_order: item.sort_order,
   }));
 }
@@ -85,8 +87,21 @@ function msFromSeconds(value: string) {
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed * 1000)) : 0;
 }
 
+function cloneAlignment(alignment: SubtitleAlignment | null | undefined): SubtitleAlignment | null {
+  if (!alignment?.words?.length) return null;
+  return {
+    source: alignment.source || "faster-whisper",
+    version: alignment.version || 1,
+    words: alignment.words.map((word) => ({ ...word })),
+  };
+}
+
+function alignmentEqual(left: SubtitleAlignment | null, right: SubtitleAlignment | null) {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
 function cloneRows(items: EditableSubtitle[]) {
-  return items.map((item) => ({ ...item }));
+  return items.map((item) => ({ ...item, alignment_json: cloneAlignment(item.alignment_json) }));
 }
 
 function rowsEqual(left: EditableSubtitle[], right: EditableSubtitle[]) {
@@ -100,9 +115,78 @@ function rowsEqual(left: EditableSubtitle[], right: EditableSubtitle[]) {
       item.end_ms === other.end_ms &&
       item.en_text === other.en_text &&
       item.zh_text === other.zh_text &&
+      alignmentEqual(item.alignment_json, other.alignment_json) &&
       item.sort_order === other.sort_order
     );
   });
+}
+
+function cleanSubtitleText(text: string) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function splitWordTextAtRatio(text: string, ratio: number): [string, string] {
+  const leading = text.match(/^\s*/)?.[0] ?? "";
+  const body = text.trim();
+  if (body.length <= 1) {
+    return ratio < 0.5 ? [text, ""] : ["", text];
+  }
+  const cut = Math.min(body.length - 1, Math.max(1, Math.round(body.length * ratio)));
+  return [`${leading}${body.slice(0, cut)}`, body.slice(cut)];
+}
+
+function splitAlignment(alignment: SubtitleAlignment | null, splitMs: number): [SubtitleAlignment | null, SubtitleAlignment | null] {
+  if (!alignment?.words?.length) return [null, null];
+  const leftWords: SubtitleAlignmentWord[] = [];
+  const rightWords: SubtitleAlignmentWord[] = [];
+
+  for (const word of alignment.words) {
+    if (!word.text || word.end_ms <= word.start_ms) continue;
+    if (word.end_ms <= splitMs) {
+      leftWords.push({ ...word });
+      continue;
+    }
+    if (word.start_ms >= splitMs) {
+      rightWords.push({ ...word });
+      continue;
+    }
+    const ratio = (splitMs - word.start_ms) / (word.end_ms - word.start_ms);
+    const [leftText, rightText] = splitWordTextAtRatio(word.text, ratio);
+    if (leftText.trim()) leftWords.push({ ...word, text: leftText, end_ms: splitMs });
+    if (rightText.trim()) rightWords.push({ ...word, text: rightText, start_ms: splitMs });
+  }
+
+  const makeAlignment = (words: SubtitleAlignmentWord[]) =>
+    words.length
+      ? {
+          source: alignment.source || "faster-whisper",
+          version: alignment.version || 1,
+          words,
+        }
+      : null;
+  return [makeAlignment(leftWords), makeAlignment(rightWords)];
+}
+
+function splitTextByAlignment(alignment: SubtitleAlignment | null, splitMs: number): [string, string] | null {
+  const [leftAlignment, rightAlignment] = splitAlignment(alignment, splitMs);
+  if (!leftAlignment || !rightAlignment) return null;
+  const leftText = cleanSubtitleText(leftAlignment.words.map((word) => word.text).join(""));
+  const rightText = cleanSubtitleText(rightAlignment.words.map((word) => word.text).join(""));
+  if (!leftText || !rightText) return null;
+  return [leftText, rightText];
+}
+
+function mergeAlignment(left: SubtitleAlignment | null, right: SubtitleAlignment | null): SubtitleAlignment | null {
+  const words = [...(left?.words ?? []), ...(right?.words ?? [])]
+    .filter((word) => word.text && word.end_ms > word.start_ms)
+    .map((word) => ({ ...word }))
+    .sort((a, b) => a.start_ms - b.start_ms || a.end_ms - b.end_ms);
+  if (!words.length) return null;
+  return {
+    source: left?.source || right?.source || "faster-whisper",
+    version: left?.version || right?.version || 1,
+    words,
+  };
 }
 
 export default function AdminSubtitlesPage() {
@@ -120,6 +204,7 @@ export default function AdminSubtitlesPage() {
   const currentIndexRef = useRef(-1);
   const undoHistoryRef = useRef<EditableSubtitle[][]>([]);
   const savedRowsRef = useRef<EditableSubtitle[]>([]);
+  const splitCaretRef = useRef<{ index: number; position: number } | null>(null);
   const [rows, setRows] = useState<EditableSubtitle[]>([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -287,9 +372,9 @@ export default function AdminSubtitlesPage() {
     setMessage(null);
   }
 
-  function splitText(text: string) {
-    const clean = text.trim();
-    if (!clean) return ["", ""];
+function splitText(text: string) {
+  const clean = text.trim();
+  if (!clean) return ["", ""];
     const midpoint = Math.floor(clean.length / 2);
     const leftSpace = clean.lastIndexOf(" ", midpoint);
     const rightSpace = clean.indexOf(" ", midpoint);
@@ -299,8 +384,40 @@ export default function AdminSubtitlesPage() {
         : rightSpace > 0 && rightSpace < clean.length * 0.72
           ? rightSpace
           : midpoint;
-    return [clean.slice(0, cut).trim(), clean.slice(cut).trim()];
+  return [clean.slice(0, cut).trim(), clean.slice(cut).trim()];
+}
+
+function splitTextAtPosition(text: string, position: number): [string, string] | null {
+  if (position <= 0 || position >= text.length) return null;
+  const first = text.slice(0, position).trim();
+  const second = text.slice(position).trim();
+  if (!first || !second) return null;
+  return [first, second];
+}
+
+function textUnitCount(text: string) {
+  return cleanSubtitleText(text).replace(/\s/g, "").length;
+}
+
+function splitMsFromTextPosition(text: string, position: number, alignment: SubtitleAlignment | null) {
+  if (!alignment?.words?.length || position <= 0 || position >= text.length) return null;
+  const targetUnits = textUnitCount(text.slice(0, position));
+  if (targetUnits <= 0) return null;
+
+  let units = 0;
+  for (const word of alignment.words) {
+    const wordUnits = textUnitCount(word.text);
+    if (wordUnits <= 0 || word.end_ms <= word.start_ms) continue;
+    if (targetUnits < units + wordUnits) {
+      const ratio = (targetUnits - units) / wordUnits;
+      return Math.round(word.start_ms + (word.end_ms - word.start_ms) * ratio);
+    }
+    if (targetUnits === units + wordUnits) return word.end_ms;
+    units += wordUnits;
   }
+
+  return null;
+}
 
   function addSubtitleAfterSelection(baseIndex = selectedIndex) {
     const items = [...rows];
@@ -321,6 +438,7 @@ export default function AdminSubtitlesPage() {
       end_ms: end,
       en_text: "",
       zh_text: "",
+      alignment_json: null,
       sort_order: insertIndex,
     });
     commitRows(items, insertIndex);
@@ -341,6 +459,7 @@ export default function AdminSubtitlesPage() {
       end_ms: next.end_ms,
       en_text: `${current.en_text.trim()} ${next.en_text.trim()}`.replace(/\s+/g, " ").trim(),
       zh_text: `${current.zh_text.trim()} ${next.zh_text.trim()}`.replace(/\s+/g, " ").trim(),
+      alignment_json: mergeAlignment(current.alignment_json, next.alignment_json),
     };
     const items = [...rows];
     items.splice(selectedIndex, 2, merged);
@@ -351,21 +470,35 @@ export default function AdminSubtitlesPage() {
     if (selectedIndex < 0) return;
     const current = rows[selectedIndex];
     if (current.end_ms - current.start_ms < 400) return;
+    const playbackMs = Math.floor((videoRef.current?.currentTime ?? -1) * 1000);
     const midpoint = Math.round((current.start_ms + current.end_ms) / 2);
-    const [firstEn, secondEn] = splitText(current.en_text);
+    const caret = splitCaretRef.current?.index === selectedIndex ? splitCaretRef.current.position : null;
+    const caretSplitMs = caret != null ? splitMsFromTextPosition(current.en_text, caret, current.alignment_json) : null;
+    const splitMs =
+      playbackMs > current.start_ms && playbackMs < current.end_ms
+        ? playbackMs
+        : caretSplitMs && caretSplitMs > current.start_ms && caretSplitMs < current.end_ms
+          ? caretSplitMs
+          : midpoint;
+    const manualEn = caret != null ? splitTextAtPosition(current.en_text, caret) : null;
+    const alignedEn = splitTextByAlignment(current.alignment_json, splitMs);
+    const [firstEn, secondEn] = manualEn ?? alignedEn ?? splitText(current.en_text);
     const [firstZh, secondZh] = splitText(current.zh_text);
+    const [firstAlignment, secondAlignment] = splitAlignment(current.alignment_json, splitMs);
     const first: EditableSubtitle = {
       ...current,
-      end_ms: midpoint,
+      end_ms: splitMs,
       en_text: firstEn || current.en_text,
       zh_text: firstZh,
+      alignment_json: firstAlignment,
     };
     const second: EditableSubtitle = {
       id: null,
-      start_ms: midpoint,
+      start_ms: splitMs,
       end_ms: current.end_ms,
       en_text: secondEn,
       zh_text: secondZh,
+      alignment_json: secondAlignment,
       sort_order: current.sort_order + 1,
     };
     const items = [...rows];
@@ -425,6 +558,13 @@ export default function AdminSubtitlesPage() {
   function beginEditingRow(index: number) {
     setActiveIndex(index);
     clearLockedReturnTimer();
+  }
+
+  function rememberSplitCaret(index: number, element: HTMLTextAreaElement) {
+    splitCaretRef.current = {
+      index,
+      position: element.selectionStart ?? 0,
+    };
   }
 
   function toggleSubtitleLock() {
@@ -730,8 +870,17 @@ export default function AdminSubtitlesPage() {
                     <div className="space-y-1.5" onClick={(event) => event.stopPropagation()}>
                       <Textarea
                         value={row.en_text}
-                        onFocus={() => beginEditingRow(index)}
-                        onChange={(e) => updateRow(index, { en_text: e.target.value })}
+                        onFocus={(event) => {
+                          beginEditingRow(index);
+                          rememberSplitCaret(index, event.currentTarget);
+                        }}
+                        onClick={(event) => rememberSplitCaret(index, event.currentTarget)}
+                        onKeyUp={(event) => rememberSplitCaret(index, event.currentTarget)}
+                        onSelect={(event) => rememberSplitCaret(index, event.currentTarget)}
+                        onChange={(e) => {
+                          rememberSplitCaret(index, e.currentTarget);
+                          updateRow(index, { en_text: e.target.value, alignment_json: null });
+                        }}
                         rows={2}
                         className={cn("min-h-[54px] px-3 py-1.5 leading-snug", index === activeIndex && "text-foreground")}
                       />

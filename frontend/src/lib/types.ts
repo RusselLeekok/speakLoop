@@ -74,7 +74,20 @@ export interface Subtitle {
   end_ms: number;
   en_text: string | null;
   zh_text: string | null;
+  alignment_json?: SubtitleAlignment | null;
   sort_order: number;
+}
+
+export interface SubtitleAlignmentWord {
+  text: string;
+  start_ms: number;
+  end_ms: number;
+}
+
+export interface SubtitleAlignment {
+  source: string;
+  version: number;
+  words: SubtitleAlignmentWord[];
 }
 
 export interface SubtitleWarning {
