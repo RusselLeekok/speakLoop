@@ -86,6 +86,8 @@ const PRACTICE_OPTIONS: { value: PracticeMode; label: string }[] = [
   { value: "intensive", label: "精读" },
 ];
 
+const LOCKED_RETURN_DELAY_MS = 1200;
+
 export default function LearnPage() {
   const params = useParams<{ videoId: string }>();
   const videoId = Number(params.videoId);
@@ -167,7 +169,6 @@ function Player({
   const [studyStatuses, setStudyStatuses] = useState<Record<string, StudyStatus>>({});
   const [looping, setLooping] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
-  const [scrollPaused, setScrollPaused] = useState(false);
   const [timeText, setTimeText] = useState("0:00");
   const [currentSec, setCurrentSec] = useState(0);
   const [durationSec, setDurationSec] = useState(video.duration ?? 0);
@@ -178,10 +179,12 @@ function Player({
   const practiceMenuRef = useRef<HTMLDivElement>(null);
   const practicePopupRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
-  const scrollPausedRef = useRef(false);
+  const practiceModeRef = useRef<PracticeMode>("off");
+  const lockedReturnTimerRef = useRef<number | null>(null);
+  const autoReturningRef = useRef(false);
   const restoreAppliedRef = useRef(false);
   autoScrollRef.current = autoScroll;
-  scrollPausedRef.current = scrollPaused;
+  practiceModeRef.current = practiceMode;
 
   const hasZh = useMemo(() => subtitles.some((s) => s.zh_text), [subtitles]);
   const studyItems = useMemo(() => collectStudyItems(subtitles), [subtitles]);
@@ -203,6 +206,13 @@ function Player({
     });
   }, [hasZh]);
 
+  const clearLockedReturnTimer = useCallback(() => {
+    if (lockedReturnTimerRef.current) {
+      window.clearTimeout(lockedReturnTimerRef.current);
+      lockedReturnTimerRef.current = null;
+    }
+  }, []);
+
   const scrollToIndex = useCallback(
     (index: number, behavior: ScrollBehavior = "smooth") => {
       const container = listRef.current;
@@ -210,11 +220,53 @@ function Player({
       if (!container || !sub) return;
       const item = itemRefs.current.get(sub.id);
       if (!item) return;
-      const top = item.offsetTop - container.clientHeight / 2 + item.clientHeight / 2;
+      const containerRect = container.getBoundingClientRect();
+      const itemRect = item.getBoundingClientRect();
+      const anchor = container.clientHeight * 0.34;
+      const top = container.scrollTop + itemRect.top - containerRect.top - anchor;
+      autoReturningRef.current = true;
       container.scrollTo({ top: Math.max(0, top), behavior });
+      window.setTimeout(() => {
+        autoReturningRef.current = false;
+      }, behavior === "smooth" ? 900 : 120);
     },
     [subtitles]
   );
+
+  const scrollToCurrentSubtitle = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      const index = currentIndexRef.current;
+      if (index >= 0) scrollToIndex(index, behavior);
+    },
+    [scrollToIndex]
+  );
+
+  const scheduleLockedReturn = useCallback(() => {
+    clearLockedReturnTimer();
+    if (!autoScrollRef.current || practiceModeRef.current === "intensive") return;
+    lockedReturnTimerRef.current = window.setTimeout(() => {
+      lockedReturnTimerRef.current = null;
+      if (!autoScrollRef.current || practiceModeRef.current === "intensive") return;
+      scrollToCurrentSubtitle();
+    }, LOCKED_RETURN_DELAY_MS);
+  }, [clearLockedReturnTimer, scrollToCurrentSubtitle]);
+
+  const setSubtitleLock = useCallback(
+    (locked: boolean) => {
+      autoScrollRef.current = locked;
+      setAutoScroll(locked);
+      if (!locked) {
+        clearLockedReturnTimer();
+        return;
+      }
+      if (practiceModeRef.current !== "intensive") scrollToCurrentSubtitle();
+    },
+    [clearLockedReturnTimer, scrollToCurrentSubtitle]
+  );
+
+  useEffect(() => {
+    return () => clearLockedReturnTimer();
+  }, [clearLockedReturnTimer]);
 
   useEffect(() => {
     let rafId: number;
@@ -230,7 +282,13 @@ function Player({
           if (index !== currentIndexRef.current) {
             currentIndexRef.current = index;
             setCurrentIndex(index);
-            if (index >= 0 && autoScrollRef.current && !scrollPausedRef.current) {
+            if (
+              index >= 0 &&
+              autoScrollRef.current &&
+              practiceModeRef.current !== "intensive" &&
+              !lockedReturnTimerRef.current &&
+              !autoReturningRef.current
+            ) {
               scrollToIndex(index);
             }
           }
@@ -310,10 +368,12 @@ function Player({
       seekToSubtitle(item.subtitleIndex, opts);
       currentIndexRef.current = item.subtitleIndex;
       setCurrentIndex(item.subtitleIndex);
-      setScrollPaused(false);
-      scrollToIndex(item.subtitleIndex);
+      clearLockedReturnTimer();
+      if (autoScrollRef.current && practiceModeRef.current !== "intensive") {
+        scrollToIndex(item.subtitleIndex);
+      }
     },
-    [seekToSubtitle, scrollToIndex]
+    [clearLockedReturnTimer, seekToSubtitle, scrollToIndex]
   );
 
   const openStudyItem = useCallback((item: StudyItem, event: React.MouseEvent<HTMLElement>) => {
@@ -444,18 +504,6 @@ function Player({
   }, [togglePlay, goPrev, goNext, toggleLoop]);
 
   useEffect(() => {
-    const container = listRef.current;
-    if (!container) return;
-    const pause = () => setScrollPaused(true);
-    container.addEventListener("wheel", pause, { passive: true });
-    container.addEventListener("touchmove", pause, { passive: true });
-    return () => {
-      container.removeEventListener("wheel", pause);
-      container.removeEventListener("touchmove", pause);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!practiceOpen) return;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
@@ -514,8 +562,8 @@ function Player({
         className={cn(
           "mx-auto grid h-[calc(100dvh-3.5rem)] min-h-0 w-full max-w-[calc(100vw-8px)] flex-1 items-stretch overflow-hidden p-1.5 lg:p-2",
           practiceMode === "intensive"
-            ? "gap-y-3 lg:max-w-[1780px] lg:grid-cols-[minmax(0,1fr)_300px_300px] lg:gap-x-0"
-            : "gap-3 lg:grid-cols-[minmax(0,1fr)_340px] xl:max-w-[1680px]"
+            ? "gap-y-3 lg:max-w-[1900px] lg:grid-cols-[minmax(0,1fr)_380px_340px] lg:gap-x-0 xl:grid-cols-[minmax(0,1fr)_420px_360px]"
+            : "gap-3 lg:grid-cols-[minmax(0,1fr)_400px] xl:max-w-[1760px] xl:grid-cols-[minmax(0,1fr)_440px]"
         )}
       >
         <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] gap-2.5 lg:h-[calc(100dvh-4.5rem)]">
@@ -656,15 +704,15 @@ function Player({
 
         <aside
           className={cn(
-            "surface flex h-full min-h-0 flex-col overflow-hidden rounded-lg lg:h-[calc(100dvh-4.5rem)]",
+            "surface flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-white/95 lg:h-[calc(100dvh-4.5rem)]",
             practiceMode === "intensive" && "lg:rounded-r-none lg:border-r-0"
           )}
         >
-          <div className="relative z-40 flex flex-wrap items-center justify-between gap-2 rounded-t-lg border-b-2 border-foreground/10 bg-white px-4 py-3">
-            <h2 className="text-base font-black">
+          <div className="relative z-40 rounded-t-lg border-b-2 border-foreground/10 bg-white px-4 py-3">
+            <h2 className="flex items-baseline gap-2 text-base font-black">
               动态字幕 <span className="text-sm font-bold text-muted-foreground">{subtitles.length} 句</span>
             </h2>
-            <div className="flex items-center gap-1.5 text-[12px] font-black text-[#b695ff]">
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[12px] font-black text-[#b695ff]">
               <ToolbarButton onClick={cycleLanguage} title="切换字幕语言">
                 {languageLabel}
               </ToolbarButton>
@@ -694,18 +742,33 @@ function Player({
                   <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", practiceOpen && "rotate-180")} />
                 </ToolbarButton>
               </div>
-              <label className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground">
-                <Switch checked={autoScroll} onCheckedChange={setAutoScroll} />
-                跟随
+              <label
+                className={cn(
+                  "ml-auto flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-black transition-colors",
+                  autoScroll
+                    ? "border-foreground bg-[#e9f8ff] text-foreground shadow-soft"
+                    : "border-foreground/10 bg-[#f6f6f3] text-muted-foreground"
+                )}
+                title={autoScroll ? "锁定中：播放字幕会固定回到同一位置" : "取消锁定：只高亮当前句，不移动列表"}
+              >
+                <Switch checked={autoScroll} onCheckedChange={setSubtitleLock} />
+                {autoScroll ? "锁定" : "取消锁定"}
               </label>
             </div>
+            <p className="mt-2 text-xs font-bold text-muted-foreground">
+              {autoScroll ? "锁定中：手动查看其他字幕后，会稍后回到当前播放句。" : "未锁定：播放时只高亮当前句，字幕列表不会自动滚动。"}
+            </p>
           </div>
 
           <div
             ref={listRef}
-            className="thin-scrollbar fade-mask-y relative z-0 min-h-0 flex-1 overflow-y-auto scroll-smooth rounded-b-lg bg-white"
+            className="thin-scrollbar fade-mask-y relative z-0 min-h-0 flex-1 overflow-y-auto scroll-smooth rounded-b-lg bg-[#f7f8f4] p-3"
+            onScroll={() => {
+              if (!autoScrollRef.current || autoReturningRef.current || practiceModeRef.current === "intensive") return;
+              scheduleLockedReturn();
+            }}
           >
-            <ol className="relative divide-y-2 divide-foreground/15 py-2">
+            <ol className="relative space-y-2.5">
               {subtitles.map((sub, i) => {
                 const active = i === currentIndex;
                 return (
@@ -719,39 +782,44 @@ function Player({
                       }}
                       onClick={() => {
                         seekToSubtitle(i, { play: true });
-                        setScrollPaused(false);
+                        clearLockedReturnTimer();
+                        if (autoScrollRef.current && practiceModeRef.current !== "intensive") scrollToIndex(i);
                       }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
                           seekToSubtitle(i, { play: true });
-                          setScrollPaused(false);
+                          clearLockedReturnTimer();
+                          if (autoScrollRef.current && practiceModeRef.current !== "intensive") scrollToIndex(i);
                         }
                       }}
                       className={cn(
                         "cursor-pointer",
-                        "relative block w-full border-l-4 px-4 py-3 text-left transition-colors",
+                        "relative block w-full rounded-lg border-2 px-3.5 py-3 text-left transition-all",
                         active
-                          ? "border-l-foreground bg-accent/70 text-foreground"
-                          : "border-l-transparent text-foreground hover:bg-accent/30"
+                          ? "border-foreground bg-accent text-foreground shadow-soft"
+                          : "border-foreground/10 bg-white text-foreground shadow-sm hover:border-brand/70 hover:bg-[#fbfdff]"
                       )}
                     >
                       {practiceMode === "blank" && sub.en_text && (
-                        <span className="absolute right-4 top-3 rounded-full bg-[#f3eaff] px-2 py-0.5 text-[11px] font-black text-[#9a63ff]">
+                        <span className="absolute right-3 top-3 rounded-full bg-[#f3eaff] px-2 py-0.5 text-[11px] font-black text-[#9a63ff]">
                           0/1
                         </span>
                       )}
-                      <span
-                        className={cn(
-                          "mb-1 block font-mono text-xs tabular-nums",
-                          active ? "font-bold text-foreground" : "text-muted-foreground"
-                        )}
-                      >
-                        {formatMs(sub.start_ms).slice(0, 5)}
-                      </span>
+                      <div className="mb-2 flex items-center gap-2">
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 font-mono text-[11px] font-black tabular-nums",
+                            active ? "bg-foreground text-white" : "bg-[#eef0ea] text-muted-foreground"
+                          )}
+                        >
+                          {formatMs(sub.start_ms).slice(0, 5)}
+                        </span>
+                        {active && <span className="text-[11px] font-black text-foreground/70">正在播放</span>}
+                      </div>
                       <BlurredSubtitle hidden={subtitlesHidden} compact>
                         {language !== "zh" && (
-                          <span className={cn("block pr-12 text-sm leading-relaxed", active && "font-bold")}>
+                          <span className={cn("block text-[15px] leading-7", active && "font-black")}>
                             {practiceMode === "blank" ? (
                               <ClozeText text={sub.en_text} />
                             ) : (
@@ -767,7 +835,7 @@ function Player({
                         {practiceMode !== "blank" &&
                           (language === "both" || language === "zh" || subtitlesHidden) &&
                           sub.zh_text && (
-                          <span className="block text-[13px] font-semibold leading-relaxed text-muted-foreground">
+                          <span className="mt-1 block text-sm font-semibold leading-6 text-muted-foreground">
                             {sub.zh_text}
                           </span>
                         )}
@@ -778,17 +846,9 @@ function Player({
               })}
             </ol>
 
-            {autoScroll && scrollPaused && currentIndex >= 0 && (
+            {autoScroll && practiceMode !== "intensive" && currentIndex >= 0 && (
               <div className="pointer-events-none sticky bottom-3 flex justify-center">
-                <Button
-                  size="sm"
-                  variant="brand"
-                  className="pointer-events-auto"
-                  onClick={() => {
-                    setScrollPaused(false);
-                    scrollToIndex(currentIndexRef.current);
-                  }}
-                >
+                <Button size="sm" variant="brand" className="pointer-events-auto" onClick={() => scrollToCurrentSubtitle()}>
                   <ListRestart className="h-4 w-4" />
                   回到当前句
                 </Button>
@@ -1135,12 +1195,14 @@ function IntensivePanel({
 }) {
   const [activeTab, setActiveTab] = useState<"words" | "phrases" | "expressions">("words");
   const [filter, setFilter] = useState<"all" | "unmarked" | "unknown" | "known">("all");
+  const anchorIndexRef = useRef(Math.max(0, currentIndex));
   const words = studyItems.filter((item) => item.kind === "word");
   const phrases = studyItems.filter((item) => item.kind === "phrase");
   const tabItems = activeTab === "words" ? words : activeTab === "phrases" ? phrases : [];
+  const anchorIndex = anchorIndexRef.current;
   const sortedItems = tabItems
     .slice()
-    .sort((a, b) => Math.abs(a.subtitleIndex - Math.max(0, currentIndex)) - Math.abs(b.subtitleIndex - Math.max(0, currentIndex)));
+    .sort((a, b) => Math.abs(a.subtitleIndex - anchorIndex) - Math.abs(b.subtitleIndex - anchorIndex));
   const filteredItems = sortedItems.filter((item) => {
     const status = statuses[item.id];
     if (filter === "unmarked") return !status;
